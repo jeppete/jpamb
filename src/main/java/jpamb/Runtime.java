@@ -22,7 +22,8 @@ public class Runtime {
       Tricky.class,
       jpamb.cases.Arrays.class,
       Dependent.class,
-      Calls.class);
+      Calls.class,
+      Debloating.class);
 
   public static Case[] cases(Method m) {
     var cases = m.getAnnotation(Cases.class);

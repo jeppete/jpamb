@@ -25,6 +25,16 @@ jpamb.cases.Calls.callsAssertIf:(Z)V                         (false) -> assertio
 jpamb.cases.Calls.callsAssertIf:(Z)V                         (true) -> ok
 jpamb.cases.Calls.callsAssertIfWithTrue:()V                  () -> ok
 jpamb.cases.Calls.callsAssertTrue:()V                        () -> ok
+jpamb.cases.Debloating.deadCodeAfterReturn:(I)I              (0) -> assertion error
+jpamb.cases.Debloating.deadCodeAfterReturn:(I)I              (5) -> ok
+jpamb.cases.Debloating.redundantChecks:(I)I                  (0) -> assertion error
+jpamb.cases.Debloating.redundantChecks:(I)I                  (5) -> ok
+jpamb.cases.Debloating.unusedHelper:(I)I                     (0) -> assertion error
+jpamb.cases.Debloating.unusedHelper:(I)I                     (3) -> ok
+jpamb.cases.Debloating.unusedParameter:(II)I                 (0, 20) -> assertion error
+jpamb.cases.Debloating.unusedParameter:(II)I                 (5, 10) -> ok
+jpamb.cases.Debloating.unusedVariables:(I)I                  (0) -> assertion error
+jpamb.cases.Debloating.unusedVariables:(I)I                  (4) -> ok
 jpamb.cases.Dependent.badNormalizedDistance:(II)I            (0, 0) -> divide by zero
 jpamb.cases.Dependent.badNormalizedDistance:(II)I            (1, 1) -> ok
 jpamb.cases.Dependent.divisionLoop:(I)V                      (0) -> ok
