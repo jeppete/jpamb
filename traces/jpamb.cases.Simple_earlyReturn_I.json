@@ -1,0 +1,12 @@
+{
+  "method": "jpamb.cases.Simple.earlyReturn:()I",
+  "coverage": {
+    "executed_pcs": [
+      0,
+      1
+    ],
+    "uncovered_pcs": [],
+    "branches": {}
+  },
+  "values": {}
+}

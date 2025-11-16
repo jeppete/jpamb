@@ -1,0 +1,11 @@
+{
+  "method": "jpamb.cases.Simple.justReturnNothing:()V",
+  "coverage": {
+    "executed_pcs": [
+      0
+    ],
+    "uncovered_pcs": [],
+    "branches": {}
+  },
+  "values": {}
+}

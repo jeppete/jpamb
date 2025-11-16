@@ -1,0 +1,45 @@
+{
+  "method": "jpamb.cases.Arrays.arraySometimesNull:(I)V",
+  "coverage": {
+    "executed_pcs": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      12,
+      13,
+      14,
+      15
+    ],
+    "uncovered_pcs": [],
+    "branches": {
+      "4": [
+        true
+      ]
+    }
+  },
+  "values": {
+    "local_0": {
+      "samples": [
+        11,
+        11,
+        11,
+        11,
+        11,
+        11,
+        11,
+        11,
+        11
+      ],
+      "always_positive": true,
+      "never_negative": true,
+      "never_zero": true,
+      "sign": "positive",
+      "interval": [
+        11,
+        null
+      ]
+    }
+  }
+}

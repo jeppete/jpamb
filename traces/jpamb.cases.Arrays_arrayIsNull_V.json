@@ -1,0 +1,16 @@
+{
+  "method": "jpamb.cases.Arrays.arrayIsNull:()V",
+  "coverage": {
+    "executed_pcs": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "uncovered_pcs": [],
+    "branches": {}
+  },
+  "values": {}
+}

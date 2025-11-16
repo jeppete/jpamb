@@ -1,0 +1,25 @@
+{
+  "method": "jpamb.cases.Arrays.arraySpellsHello:([C)V",
+  "coverage": {
+    "executed_pcs": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      27
+    ],
+    "uncovered_pcs": [],
+    "branches": {
+      "1": [
+        false
+      ],
+      "6": [
+        true
+      ]
+    }
+  },
+  "values": {}
+}

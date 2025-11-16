@@ -1,0 +1,23 @@
+{
+  "method": "jpamb.cases.Arrays.arrayNotEmpty:([I)V",
+  "coverage": {
+    "executed_pcs": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      9
+    ],
+    "uncovered_pcs": [],
+    "branches": {
+      "1": [
+        false
+      ],
+      "4": [
+        true
+      ]
+    }
+  },
+  "values": {}
+}

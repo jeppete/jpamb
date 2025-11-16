@@ -1,0 +1,17 @@
+{
+  "method": "jpamb.cases.Simple.assertFalse:()V",
+  "coverage": {
+    "executed_pcs": [
+      0,
+      1,
+      2
+    ],
+    "uncovered_pcs": [],
+    "branches": {
+      "1": [
+        false
+      ]
+    }
+  },
+  "values": {}
+}

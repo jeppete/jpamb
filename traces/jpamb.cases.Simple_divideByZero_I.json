@@ -1,0 +1,13 @@
+{
+  "method": "jpamb.cases.Simple.divideByZero:()I",
+  "coverage": {
+    "executed_pcs": [
+      0,
+      1,
+      2
+    ],
+    "uncovered_pcs": [],
+    "branches": {}
+  },
+  "values": {}
+}

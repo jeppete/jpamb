@@ -1,0 +1,33 @@
+{
+  "method": "jpamb.cases.Simple.divideByNMinus10054203:(I)I",
+  "coverage": {
+    "executed_pcs": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "uncovered_pcs": [],
+    "branches": {}
+  },
+  "values": {
+    "local_0": {
+      "samples": [
+        10054203,
+        10054203,
+        10054203,
+        10054203,
+        10054203
+      ],
+      "always_positive": true,
+      "never_negative": true,
+      "never_zero": true,
+      "sign": "positive",
+      "interval": [
+        10054203,
+        null
+      ]
+    }
+  }
+}

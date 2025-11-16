@@ -1,0 +1,46 @@
+{
+  "method": "jpamb.cases.Simple.checkBeforeDivideByN:(I)I",
+  "coverage": {
+    "executed_pcs": [
+      0,
+      1,
+      2,
+      3,
+      8,
+      9,
+      10,
+      11
+    ],
+    "uncovered_pcs": [],
+    "branches": {
+      "1": [
+        false
+      ],
+      "3": [
+        true
+      ]
+    }
+  },
+  "values": {
+    "local_0": {
+      "samples": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "always_positive": true,
+      "never_negative": true,
+      "never_zero": true,
+      "sign": "positive",
+      "interval": [
+        1,
+        null
+      ]
+    }
+  }
+}

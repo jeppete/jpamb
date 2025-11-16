@@ -1,0 +1,40 @@
+{
+  "method": "jpamb.cases.Tricky.collatz:(I)V",
+  "coverage": {
+    "executed_pcs": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "uncovered_pcs": [],
+    "branches": {
+      "1": [
+        false
+      ],
+      "3": [
+        false
+      ]
+    }
+  },
+  "values": {
+    "local_0": {
+      "samples": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "always_positive": false,
+      "never_negative": true,
+      "never_zero": false,
+      "sign": "zero",
+      "interval": [
+        0,
+        null
+      ]
+    }
+  }
+}
