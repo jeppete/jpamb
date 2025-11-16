@@ -120,6 +120,63 @@ def step(state: State) -> State | str:
             frame.stack.push(jvm.Value.int(v1.value // v2.value))
             frame.pc += 1
             return state
+        case jvm.Binary(type=jvm.Int(), operant=jvm.BinaryOpr.Add):
+            v2, v1 = frame.stack.pop(), frame.stack.pop()
+            assert v1.type is jvm.Int(), f"expected int, but got {v1}"
+            assert v2.type is jvm.Int(), f"expected int, but got {v2}"
+            frame.stack.push(jvm.Value.int(v1.value + v2.value))
+            frame.pc += 1
+            return state
+        case jvm.Binary(type=jvm.Int(), operant=jvm.BinaryOpr.Sub):
+            v2, v1 = frame.stack.pop(), frame.stack.pop()
+            assert v1.type is jvm.Int(), f"expected int, but got {v1}"
+            assert v2.type is jvm.Int(), f"expected int, but got {v2}"
+            frame.stack.push(jvm.Value.int(v1.value - v2.value))
+            frame.pc += 1
+            return state
+        case jvm.Binary(type=jvm.Int(), operant=jvm.BinaryOpr.Mul):
+            v2, v1 = frame.stack.pop(), frame.stack.pop()
+            assert v1.type is jvm.Int(), f"expected int, but got {v1}"
+            assert v2.type is jvm.Int(), f"expected int, but got {v2}"
+            frame.stack.push(jvm.Value.int(v1.value * v2.value))
+            frame.pc += 1
+            return state
+        case jvm.Get(static=True, field=field):
+            # For static field access, particularly $assertionsDisabled
+            if field.extension.name == "$assertionsDisabled":
+                # Java assertions are typically disabled, so return false
+                frame.stack.push(jvm.Value.boolean(False))
+            else:
+                # Default to zero/false for other static fields
+                if isinstance(field.extension.type, jvm.Boolean):
+                    frame.stack.push(jvm.Value.boolean(False))
+                elif isinstance(field.extension.type, jvm.Int):
+                    frame.stack.push(jvm.Value.int(0))
+                else:
+                    raise NotImplementedError(f"Unsupported static field type: {field.extension.type}")
+            frame.pc += 1
+            return state
+        case jvm.Ifz(condition=condition, target=target):
+            v = frame.stack.pop()
+            should_jump = False
+            if condition == "eq" and v.value == 0:
+                should_jump = True
+            elif condition == "ne" and v.value != 0:
+                should_jump = True
+            elif condition == "lt" and v.value < 0:
+                should_jump = True
+            elif condition == "le" and v.value <= 0:
+                should_jump = True
+            elif condition == "gt" and v.value > 0:
+                should_jump = True
+            elif condition == "ge" and v.value >= 0:
+                should_jump = True
+            
+            if should_jump:
+                frame.pc = PC(frame.pc.method, target)
+            else:
+                frame.pc += 1
+            return state
         case jvm.Return(type=jvm.Int()):
             v1 = frame.stack.pop()
             state.frames.pop()
@@ -130,6 +187,45 @@ def step(state: State) -> State | str:
                 return state
             else:
                 return "ok"
+        case jvm.Return(type=None):  # Void return
+            state.frames.pop()
+            if state.frames:
+                frame = state.frames.peek()
+                frame.pc += 1
+                return state
+            else:
+                return "ok"
+        case jvm.New(classname=classname):
+            # Handle creation of new objects, especially exceptions
+            if str(classname) == "java/lang/AssertionError":
+                return "assertion error"
+            else:
+                # For other classes, we could create a simple object reference
+                # but for now, we'll just return an error message
+                raise NotImplementedError(f"Creating objects of type {classname} not supported")
+        case jvm.If(condition=condition, target=target):
+            # Compare two values on the stack
+            v2, v1 = frame.stack.pop(), frame.stack.pop()
+            should_jump = False
+            
+            if condition == "eq" and v1.value == v2.value:
+                should_jump = True
+            elif condition == "ne" and v1.value != v2.value:
+                should_jump = True
+            elif condition == "lt" and v1.value < v2.value:
+                should_jump = True
+            elif condition == "le" and v1.value <= v2.value:
+                should_jump = True
+            elif condition == "gt" and v1.value > v2.value:
+                should_jump = True
+            elif condition == "ge" and v1.value >= v2.value:
+                should_jump = True
+            
+            if should_jump:
+                frame.pc = PC(frame.pc.method, target)
+            else:
+                frame.pc += 1
+            return state
         case a:
             raise NotImplementedError(f"Don't know how to handle: {a!r}")
 
