@@ -110,35 +110,27 @@ def step(state: State) -> State | str:
             frame.stack.push(frame.locals[i])
             frame.pc += 1
             return state
-        case jvm.Binary(type=jvm.Int(), operant=jvm.BinaryOpr.Div):
+        case jvm.Binary(type=jvm.Int(), operant=operant):
             v2, v1 = frame.stack.pop(), frame.stack.pop()
             assert v1.type is jvm.Int(), f"expected int, but got {v1}"
             assert v2.type is jvm.Int(), f"expected int, but got {v2}"
-            if v2.value == 0:
-                return "divide by zero"
-
-            frame.stack.push(jvm.Value.int(v1.value // v2.value))
-            frame.pc += 1
-            return state
-        case jvm.Binary(type=jvm.Int(), operant=jvm.BinaryOpr.Add):
-            v2, v1 = frame.stack.pop(), frame.stack.pop()
-            assert v1.type is jvm.Int(), f"expected int, but got {v1}"
-            assert v2.type is jvm.Int(), f"expected int, but got {v2}"
-            frame.stack.push(jvm.Value.int(v1.value + v2.value))
-            frame.pc += 1
-            return state
-        case jvm.Binary(type=jvm.Int(), operant=jvm.BinaryOpr.Sub):
-            v2, v1 = frame.stack.pop(), frame.stack.pop()
-            assert v1.type is jvm.Int(), f"expected int, but got {v1}"
-            assert v2.type is jvm.Int(), f"expected int, but got {v2}"
-            frame.stack.push(jvm.Value.int(v1.value - v2.value))
-            frame.pc += 1
-            return state
-        case jvm.Binary(type=jvm.Int(), operant=jvm.BinaryOpr.Mul):
-            v2, v1 = frame.stack.pop(), frame.stack.pop()
-            assert v1.type is jvm.Int(), f"expected int, but got {v1}"
-            assert v2.type is jvm.Int(), f"expected int, but got {v2}"
-            frame.stack.push(jvm.Value.int(v1.value * v2.value))
+            
+            match operant:
+                case jvm.BinaryOpr.Div:
+                    if v2.value == 0:
+                        return "divide by zero"
+                    else:
+                        result = v1.value // v2.value
+                case jvm.BinaryOpr.Add:
+                    result = v1.value + v2.value
+                case jvm.BinaryOpr.Sub:
+                    result = v1.value - v2.value
+                case jvm.BinaryOpr.Mul:
+                    result = v1.value * v2.value
+                case _:
+                    raise NotImplementedError(f"Unsupported binary operator: {operant}")
+            
+            frame.stack.push(jvm.Value.int(result))
             frame.pc += 1
             return state
         case jvm.Get(static=True, field=field):
@@ -200,9 +192,12 @@ def step(state: State) -> State | str:
             if str(classname) == "java/lang/AssertionError":
                 return "assertion error"
             else:
-                # For other classes, we could create a simple object reference
-                # but for now, we'll just return an error message
-                raise NotImplementedError(f"Creating objects of type {classname} not supported")
+                # For other classes, create a simple object reference and push to stack
+                # Using a simple object ID based on the class name
+                object_ref = jvm.Value(jvm.Reference(), f"ref_{classname}")
+                frame.stack.push(object_ref)
+                frame.pc += 1
+                return state
         case jvm.If(condition=condition, target=target):
             # Compare two values on the stack
             v2, v1 = frame.stack.pop(), frame.stack.pop()
