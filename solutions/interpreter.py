@@ -119,8 +119,7 @@ def step(state: State) -> State | str:
                 case jvm.BinaryOpr.Div:
                     if v2.value == 0:
                         return "divide by zero"
-                    else:
-                        result = v1.value // v2.value
+                    result = v1.value // v2.value
                 case jvm.BinaryOpr.Add:
                     result = v1.value + v2.value
                 case jvm.BinaryOpr.Sub:
@@ -150,21 +149,18 @@ def step(state: State) -> State | str:
             return state
         case jvm.Ifz(condition=condition, target=target):
             v = frame.stack.pop()
-            should_jump = False
-            if condition == "eq" and v.value == 0:
-                should_jump = True
-            elif condition == "ne" and v.value != 0:
-                should_jump = True
-            elif condition == "lt" and v.value < 0:
-                should_jump = True
-            elif condition == "le" and v.value <= 0:
-                should_jump = True
-            elif condition == "gt" and v.value > 0:
-                should_jump = True
-            elif condition == "ge" and v.value >= 0:
-                should_jump = True
+            conditions = {
+                "eq": lambda val: val == 0,
+                "ne": lambda val: val != 0,
+                "lt": lambda val: val < 0,
+                "le": lambda val: val <= 0,
+                "gt": lambda val: val > 0,
+                "ge": lambda val: val >= 0,
+            }
+            if condition not in conditions:
+                raise NotImplementedError(f"Unsupported Ifz condition: {condition}")
             
-            if should_jump:
+            if conditions[condition](v.value):
                 frame.pc = PC(frame.pc.method, target)
             else:
                 frame.pc += 1
@@ -201,22 +197,18 @@ def step(state: State) -> State | str:
         case jvm.If(condition=condition, target=target):
             # Compare two values on the stack
             v2, v1 = frame.stack.pop(), frame.stack.pop()
-            should_jump = False
+            conditions = {
+                "eq": lambda v1, v2: v1 == v2,
+                "ne": lambda v1, v2: v1 != v2,
+                "lt": lambda v1, v2: v1 < v2,
+                "le": lambda v1, v2: v1 <= v2,
+                "gt": lambda v1, v2: v1 > v2,
+                "ge": lambda v1, v2: v1 >= v2,
+            }
+            if condition not in conditions:
+                raise NotImplementedError(f"Unsupported If condition: {condition}")
             
-            if condition == "eq" and v1.value == v2.value:
-                should_jump = True
-            elif condition == "ne" and v1.value != v2.value:
-                should_jump = True
-            elif condition == "lt" and v1.value < v2.value:
-                should_jump = True
-            elif condition == "le" and v1.value <= v2.value:
-                should_jump = True
-            elif condition == "gt" and v1.value > v2.value:
-                should_jump = True
-            elif condition == "ge" and v1.value >= v2.value:
-                should_jump = True
-            
-            if should_jump:
+            if conditions[condition](v1.value, v2.value):
                 frame.pc = PC(frame.pc.method, target)
             else:
                 frame.pc += 1
