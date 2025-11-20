@@ -1,118 +1,60 @@
 #!/usr/bin/env python3
-"""A very stupid syntatic analysis, that only checks for assertion errors."""
+"""Entry point for the syntaxer syntactic debloating analysis."""
+
+from __future__ import annotations
 
 import logging
-import tree_sitter
-import tree_sitter_java
-import jpamb
 import sys
 from pathlib import Path
 
+import jpamb
 
-methodid = jpamb.getmethodid(
-    "syntaxer",
-    "1.0",
-    "The Rice Theorem Cookers",
-    ["syntatic", "python"],
-    for_science=True,
-)
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
+from solutions.syntaxer import BloatFinder, Issue  # noqa: E402
+from solutions.syntaxer.utils import create_java_parser  # noqa: E402
 
-JAVA_LANGUAGE = tree_sitter.Language(tree_sitter_java.language())
-parser = tree_sitter.Parser(JAVA_LANGUAGE)
+log = logging.getLogger(__name__)
 
-log = logging
-log.basicConfig(level=logging.DEBUG)
-
-
-srcfile = jpamb.sourcefile(methodid).relative_to(Path.cwd())
-
-with open(srcfile, "rb") as f:
-    log.debug("parse sourcefile %s", srcfile)
-    tree = parser.parse(f.read())
-
-simple_classname = str(methodid.classname.name)
-
-log.debug(f"{simple_classname}")
-
-# To figure out how to write these you can consult the
-# https://tree-sitter.github.io/tree-sitter/playground
-class_q = tree_sitter.Query(
-    JAVA_LANGUAGE,
-    f"""
-    (class_declaration 
-        name: ((identifier) @class-name 
-               (#eq? @class-name "{simple_classname}"))) @class
-""",
-)
-
-for node in tree_sitter.QueryCursor(class_q).captures(tree.root_node)["class"]:
-    break
-else:
-    log.error(f"could not find a class of name {simple_classname} in {srcfile}")
-
-    sys.exit(-1)
-
-# log.debug("Found class %s", node.range)
-
-method_name = methodid.extension.name
-
-method_q = tree_sitter.Query(
-    JAVA_LANGUAGE,
-    f"""
-    (method_declaration name: 
-      ((identifier) @method-name (#eq? @method-name "{method_name}"))
-    ) @method
-""",
-)
-
-for node in tree_sitter.QueryCursor(method_q).captures(node)["method"]:
-
-    if not (p := node.child_by_field_name("parameters")):
-        log.debug(f"Could not find parameteres of {method_name}")
-        continue
-
-    params = [c for c in p.children if c.type == "formal_parameter"]
-
-    if len(params) != len(methodid.extension.params):
-        continue
-
-    # log.debug(methodid.extension.params)
-    # log.debug(params)
-
-    for tn, t in zip(methodid.extension.params, params):
-        if (tp := t.child_by_field_name("type")) is None:
-            break
-
-        if tp.text is None:
-            break
-
-        # todo check for type.
-    else:
-        break
-else:
-    log.warning(f"could not find a method of name {method_name} in {simple_classname}")
-    sys.exit(-1)
-
-# log.debug("Found method %s %s", method_name, node.range)
-
-body = node.child_by_field_name("body")
-assert body and body.text
-for t in body.text.splitlines():
-    log.debug("line: %s", t.decode())
-
-assert_q = tree_sitter.Query(JAVA_LANGUAGE, """(assert_statement) @assert""")
+ANALYSIS_NAME = "syntaxer"
+ANALYSIS_VERSION = "1.0"
+ANALYSIS_GROUP = "Group 21"
+ANALYSIS_TAGS = ["syntactic", "python"]
 
 
-assert_found = any(
-    capture_name == "assert"
-    for capture_name, _ in tree_sitter.QueryCursor(assert_q).captures(body).items()
-)
-if assert_found:
-    log.debug("Found assertion")
-    print("assertion error;80%")
-else:
-    log.debug("No assertion")
-    print("assertion error;20%")
+def resolve_source_path(methodid: jpamb.jvm.AbsMethodID) -> Path:
+    """Return an absolute path to the Java source file for the method."""
+    srcpath = jpamb.sourcefile(methodid)
+    if not srcpath.is_absolute():
+        srcpath = Path.cwd() / srcpath
+    return srcpath
 
-sys.exit(0)
+
+def run_analysis(methodid: jpamb.jvm.AbsMethodID) -> tuple[list[Issue], str]:
+    """Parse the source file and run the bloat finder."""
+    parser = create_java_parser()
+    srcpath = resolve_source_path(methodid)
+    log.debug("parse sourcefile %s", srcpath)
+
+    source_bytes = srcpath.read_bytes()
+    tree = parser.parse(source_bytes)
+    BloatFinder(tree, source_bytes)
+
+
+def main():
+    logging.basicConfig(level=logging.DEBUG)
+
+    methodid = jpamb.getmethodid(
+        ANALYSIS_NAME,
+        ANALYSIS_VERSION,
+        ANALYSIS_GROUP,
+        ANALYSIS_TAGS,
+        for_science=True,
+    )
+
+    run_analysis(methodid)
+
+if __name__ == "__main__":
+    main()
