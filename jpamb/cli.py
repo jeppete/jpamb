@@ -312,7 +312,7 @@ def trace(suite, trace_dir):
         log.info(f"Tracing {case.methodid}")
         
         # Create tracers
-        coverage = CoverageTracker()
+        coverage = CoverageTracker(case.methodid)
         tracer = ValueTracer()
         
         try:

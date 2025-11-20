@@ -102,7 +102,7 @@ def test_execute_with_tracing():
         methodid = jvm.AbsMethodID.decode("jpamb.cases.Simple.divideByZero:()I")
         input_vals = jpamb.model.Input.decode("()")
         
-        coverage = CoverageTracker()
+        coverage = CoverageTracker(methodid)
         tracer = ValueTracer()
         
         result = execute(methodid, input_vals, coverage=coverage, tracer=tracer, trace_dir=tmpdir)
@@ -130,7 +130,7 @@ def test_execute_simple_positive_case():
         methodid = jvm.AbsMethodID.decode("jpamb.cases.Simple.justAdd:(II)I")
         input_vals = jpamb.model.Input.decode("(5, 3)")
         
-        coverage = CoverageTracker()
+        coverage = CoverageTracker(methodid)
         tracer = ValueTracer()
         
         result = execute(methodid, input_vals, coverage=coverage, tracer=tracer, trace_dir=tmpdir)
@@ -158,7 +158,7 @@ def test_branch_coverage_detection():
         methodid = jvm.AbsMethodID.decode("jpamb.cases.Simple.checkBeforeAssert:(I)V")
         input_vals = jpamb.model.Input.decode("(5)")
         
-        coverage = CoverageTracker()
+        coverage = CoverageTracker(methodid)
         tracer = ValueTracer()
         
         result = execute(methodid, input_vals, coverage=coverage, tracer=tracer, trace_dir=tmpdir)
@@ -179,7 +179,7 @@ def test_negative_value_detection():
         methodid = jvm.AbsMethodID.decode("jpamb.cases.Simple.divideByN:(I)I")
         input_vals = jpamb.model.Input.decode("(-5)")
         
-        coverage = CoverageTracker()
+        coverage = CoverageTracker(methodid)
         tracer = ValueTracer()
         
         result = execute(methodid, input_vals, coverage=coverage, tracer=tracer, trace_dir=tmpdir)
@@ -197,7 +197,7 @@ def test_interval_calculation():
         methodid = jvm.AbsMethodID.decode("jpamb.cases.Loops.neverDivides:()I")
         input_vals = jpamb.model.Input.decode("()")
         
-        coverage = CoverageTracker()
+        coverage = CoverageTracker(methodid)
         tracer = ValueTracer()
         
         try:
@@ -228,7 +228,7 @@ def test_json_file_writing():
         methodid = jvm.AbsMethodID.decode("jpamb.cases.Simple.divideByZero:()I")
         input_vals = jpamb.model.Input.decode("()")
         
-        coverage = CoverageTracker()
+        coverage = CoverageTracker(methodid)
         tracer = ValueTracer()
         
         # Execute with tracing
@@ -256,14 +256,14 @@ def test_multiple_executions_different_inputs():
         
         # Test with positive input
         input1 = jpamb.model.Input.decode("(5, 3)")
-        coverage1 = CoverageTracker()
+        coverage1 = CoverageTracker(methodid)
         tracer1 = ValueTracer()
         
         result1 = execute(methodid, input1, coverage=coverage1, tracer=tracer1, trace_dir=tmpdir)
         
         # Test with different input  
         input2 = jpamb.model.Input.decode("(-5, -3)")
-        coverage2 = CoverageTracker()
+        coverage2 = CoverageTracker(methodid)
         tracer2 = ValueTracer()
         
         result2 = execute(methodid, input2, coverage=coverage2, tracer=tracer2, trace_dir=tmpdir)
@@ -281,7 +281,7 @@ def test_trace_directory_creation():
         methodid = jvm.AbsMethodID.decode("jpamb.cases.Simple.divideByZero:()I")
         input_vals = jpamb.model.Input.decode("()")
         
-        coverage = CoverageTracker()
+        coverage = CoverageTracker(methodid)
         tracer = ValueTracer()
         
         result = execute(methodid, input_vals, coverage=coverage, tracer=tracer, trace_dir=str(nonexistent_dir))

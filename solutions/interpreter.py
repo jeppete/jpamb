@@ -386,7 +386,10 @@ def execute(method: jvm.AbsMethodID, inputs=None, coverage=None, tracer=None, tr
 
     state = State({}, Stack.empty().push(frame))
     
-    # Initialize tracing
+    # Initialize tracing - if no coverage tracker provided, create one with method info
+    if coverage is None and trace_dir:
+        coverage = CoverageTracker(method)
+    
     if coverage:
         coverage.visit(0)
     
@@ -464,14 +467,30 @@ def execute(method: jvm.AbsMethodID, inputs=None, coverage=None, tracer=None, tr
 class CoverageTracker:
     """Records visited PCs and branch outcomes."""
     
-    def __init__(self):
+    def __init__(self, method: jvm.AbsMethodID = None):
         self.visited_pcs = set()
         self.all_pcs = set()
         self.branches = {}
+        
+        # If method is provided, scan all possible PCs
+        if method:
+            self._scan_all_pcs(method)
+    
+    def _scan_all_pcs(self, method: jvm.AbsMethodID):
+        """Scan method bytecode to find all possible PC locations."""
+        global bc
+        try:
+            opcodes = list(bc.suite.method_opcodes(method))
+            # All PC positions are simply the opcode indices
+            self.all_pcs = set(range(len(opcodes)))
+        except Exception:
+            # If we can't scan, fall back to dynamic discovery
+            pass
     
     def visit(self, pc):
         """Record that a PC was visited."""
         self.visited_pcs.add(pc)
+        # Also add to all_pcs in case we couldn't scan beforehand
         self.all_pcs.add(pc)
     
     def branch(self, pc, taken):
