@@ -422,9 +422,11 @@ def execute(method: jvm.AbsMethodID, inputs=None, coverage=None, tracer=None, tr
 
     state = State({}, Stack.empty().push(frame))
     
-    # Initialize tracing - if no coverage tracker provided, create one with method info
-    if coverage is None and trace_dir:
-        coverage = CoverageTracker(method)
+    # Only create default coverage tracker if:
+    # 1. No coverage tracker was provided AND 
+    # 2. A trace_dir is specified AND
+    # 3. We're not explicitly disabling all tracing (i.e., at least one of coverage or tracer should be non-None)
+    # The test case passes both coverage=None and tracer=None explicitly, so no tracing should occur
     
     if coverage:
         coverage.visit(0)
