@@ -1,8 +1,11 @@
 """
-Test suite for abstract domains (SignSet, IntervalDomain).
+Test suite for abstract domains (SignSet, IntervalDomain, NonNullDomain).
 
-Tests cover sign and interval domains, their operations (join, meet, widening),
+Tests cover sign, interval, and nullness domains, their operations (join, meet, widening),
 and arithmetic operations. These are the core building blocks for abstract interpretation.
+
+NonNullDomain is a NOVEL abstraction NOT taught in DTU 02242 lectures, qualifying
+for IAB (Implement Novel Abstractions) points.
 
 DTU 02242 Program Analysis - Group 21
 """
@@ -20,6 +23,8 @@ from solutions.abstract_domain import (
     IntervalDomain,
     IntervalValue,
     IntervalArithmetic,
+    NonNullDomain,
+    NullnessValue,
 )
 
 
@@ -532,6 +537,319 @@ class TestIntervalArithmetic:
         result = IntervalArithmetic.neg(a)
         assert result.value.low == -10
         assert result.value.high == -3
+
+
+class TestDomainContainment:
+    """Test containment checks for abstract domains."""
+    
+    def test_signset_contains_concrete(self):
+        """Test SignSet.__contains__ for concrete values."""
+        non_neg = SignSet(frozenset({"+", "0"}))
+        
+        assert 5 in non_neg
+        assert 0 in non_neg
+        assert -5 not in non_neg
+    
+    def test_interval_contains_concrete(self):
+        """Test IntervalDomain.__contains__ for concrete values."""
+        interval = IntervalDomain.range(1, 10)
+        
+        assert 1 in interval
+        assert 5 in interval
+        assert 10 in interval
+        assert 0 not in interval
+        assert 11 not in interval
+
+
+# =============================================================================
+# IAB: NonNullDomain Tests (Novel Abstraction NOT taught in 02242)
+# =============================================================================
+# The NonNullDomain is a novel abstraction that tracks reference nullness:
+# - DEFINITELY_NON_NULL: reference is guaranteed non-null (e.g., after 'new')
+# - MAYBE_NULL: reference may be null (includes definitely null)
+# - TOP: unknown nullness (conservative)
+# - BOTTOM: unreachable
+#
+# This domain enables dead code detection for null-checks:
+# - If ref is DEFINITELY_NON_NULL, ifnull branch is DEAD
+# - After ifnonnull branch, ref becomes DEFINITELY_NON_NULL
+# =============================================================================
+
+
+class TestNonNullDomainCreation:
+    """Test cases for NonNullDomain creation and basic properties."""
+    
+    def test_nonnull_bottom(self):
+        """Test NonNullDomain.bottom() creates unreachable state."""
+        bottom = NonNullDomain.bottom()
+        assert bottom.value == NullnessValue.BOTTOM
+        assert bottom.is_bottom()
+        assert not bottom.is_top()
+        assert not bottom  # bool(bottom) should be False
+    
+    def test_nonnull_top(self):
+        """Test NonNullDomain.top() creates unknown state."""
+        top = NonNullDomain.top()
+        assert top.value == NullnessValue.TOP
+        assert top.is_top()
+        assert not top.is_bottom()
+        assert top  # bool(top) should be True
+    
+    def test_nonnull_definitely_non_null(self):
+        """Test NonNullDomain.definitely_non_null()."""
+        nonnull = NonNullDomain.definitely_non_null()
+        assert nonnull.value == NullnessValue.DEFINITELY_NON_NULL
+        assert nonnull.is_definitely_non_null()
+        assert not nonnull.is_maybe_null()
+        assert not nonnull.is_bottom()
+        assert not nonnull.is_top()
+    
+    def test_nonnull_maybe_null(self):
+        """Test NonNullDomain.maybe_null()."""
+        maybe = NonNullDomain.maybe_null()
+        assert maybe.value == NullnessValue.MAYBE_NULL
+        assert maybe.is_maybe_null()
+        assert not maybe.is_definitely_non_null()
+        assert not maybe.is_bottom()
+        assert not maybe.is_top()
+    
+    def test_nonnull_from_new(self):
+        """Test that 'new' instruction produces DEFINITELY_NON_NULL."""
+        # This is the key insight: newly created objects are never null
+        nonnull = NonNullDomain.from_new()
+        assert nonnull.is_definitely_non_null()
+    
+    def test_nonnull_from_null_constant(self):
+        """Test that 'aconst_null' produces MAYBE_NULL."""
+        maybe = NonNullDomain.from_null_constant()
+        assert maybe.is_maybe_null()
+    
+    def test_nonnull_repr(self):
+        """Test NonNullDomain string representation."""
+        assert repr(NonNullDomain.bottom()) == "⊥"
+        assert repr(NonNullDomain.top()) == "⊤"
+        assert repr(NonNullDomain.definitely_non_null()) == "NonNull"
+        assert repr(NonNullDomain.maybe_null()) == "MaybeNull"
+
+
+class TestNonNullDomainLattice:
+    """Test NonNullDomain lattice operations."""
+    
+    def test_nonnull_order_bottom_le_all(self):
+        """Bottom is below all other elements."""
+        bottom = NonNullDomain.bottom()
+        top = NonNullDomain.top()
+        nonnull = NonNullDomain.definitely_non_null()
+        maybe = NonNullDomain.maybe_null()
+        
+        assert bottom <= top
+        assert bottom <= nonnull
+        assert bottom <= maybe
+        assert bottom <= bottom
+    
+    def test_nonnull_order_all_le_top(self):
+        """All elements are below top."""
+        bottom = NonNullDomain.bottom()
+        top = NonNullDomain.top()
+        nonnull = NonNullDomain.definitely_non_null()
+        maybe = NonNullDomain.maybe_null()
+        
+        assert bottom <= top
+        assert nonnull <= top
+        assert maybe <= top
+        assert top <= top
+    
+    def test_nonnull_incomparable(self):
+        """DEFINITELY_NON_NULL and MAYBE_NULL are incomparable."""
+        nonnull = NonNullDomain.definitely_non_null()
+        maybe = NonNullDomain.maybe_null()
+        
+        # Neither is ≤ the other
+        assert not (nonnull <= maybe)
+        assert not (maybe <= nonnull)
+    
+    def test_nonnull_join_with_bottom(self):
+        """Bottom is identity for join."""
+        nonnull = NonNullDomain.definitely_non_null()
+        bottom = NonNullDomain.bottom()
+        
+        assert nonnull | bottom == nonnull
+        assert bottom | nonnull == nonnull
+    
+    def test_nonnull_join_same(self):
+        """Join of same element is itself."""
+        nonnull = NonNullDomain.definitely_non_null()
+        maybe = NonNullDomain.maybe_null()
+        
+        assert (nonnull | nonnull) == nonnull
+        assert (maybe | maybe) == maybe
+    
+    def test_nonnull_join_incomparable_to_top(self):
+        """Join of incomparable elements is TOP."""
+        nonnull = NonNullDomain.definitely_non_null()
+        maybe = NonNullDomain.maybe_null()
+        
+        # This is key: joining incomparable → TOP
+        result = nonnull | maybe
+        assert result.is_top()
+    
+    def test_nonnull_meet_with_top(self):
+        """Top is identity for meet."""
+        nonnull = NonNullDomain.definitely_non_null()
+        top = NonNullDomain.top()
+        
+        assert nonnull & top == nonnull
+        assert top & nonnull == nonnull
+    
+    def test_nonnull_meet_same(self):
+        """Meet of same element is itself."""
+        nonnull = NonNullDomain.definitely_non_null()
+        maybe = NonNullDomain.maybe_null()
+        
+        assert (nonnull & nonnull) == nonnull
+        assert (maybe & maybe) == maybe
+    
+    def test_nonnull_meet_incomparable_to_bottom(self):
+        """Meet of incomparable elements is BOTTOM."""
+        nonnull = NonNullDomain.definitely_non_null()
+        maybe = NonNullDomain.maybe_null()
+        
+        # This is key: meeting incomparable → BOTTOM
+        result = nonnull & maybe
+        assert result.is_bottom()
+    
+    def test_nonnull_widening(self):
+        """Widening is same as join for finite lattice."""
+        nonnull = NonNullDomain.definitely_non_null()
+        maybe = NonNullDomain.maybe_null()
+        
+        # For NonNullDomain, widening = join (finite lattice)
+        assert nonnull.widening(maybe) == (nonnull | maybe)
+
+
+class TestNonNullBranchRefinement:
+    """Test NonNullDomain branch refinement for ifnull/ifnonnull."""
+    
+    def test_refine_ifnull_true_from_top(self):
+        """After ifnull is taken, refine to MAYBE_NULL."""
+        top = NonNullDomain.top()
+        refined = top.refine_ifnull_true()
+        assert refined.is_maybe_null()
+    
+    def test_refine_ifnull_true_from_nonnull_is_bottom(self):
+        """
+        If DEFINITELY_NON_NULL but ifnull taken → contradiction → BOTTOM.
+        
+        This proves the branch is DEAD.
+        """
+        nonnull = NonNullDomain.definitely_non_null()
+        refined = nonnull.refine_ifnull_true()
+        assert refined.is_bottom()
+    
+    def test_refine_ifnull_false_from_top(self):
+        """After ifnull is NOT taken, refine to DEFINITELY_NON_NULL."""
+        top = NonNullDomain.top()
+        refined = top.refine_ifnull_false()
+        assert refined.is_definitely_non_null()
+    
+    def test_refine_ifnull_false_from_maybe(self):
+        """
+        After ifnull is NOT taken on MAYBE_NULL, refine to NON_NULL.
+        
+        This is the key refinement: we learn the reference is not null.
+        """
+        maybe = NonNullDomain.maybe_null()
+        refined = maybe.refine_ifnull_false()
+        assert refined.is_definitely_non_null()
+    
+    def test_refine_ifnonnull_true_from_top(self):
+        """After ifnonnull is taken, refine to DEFINITELY_NON_NULL."""
+        top = NonNullDomain.top()
+        refined = top.refine_ifnonnull_true()
+        assert refined.is_definitely_non_null()
+    
+    def test_refine_ifnonnull_true_from_maybe(self):
+        """
+        After ifnonnull is taken on MAYBE_NULL, refine to NON_NULL.
+        
+        This is the key refinement for proving null checks safe.
+        """
+        maybe = NonNullDomain.maybe_null()
+        refined = maybe.refine_ifnonnull_true()
+        assert refined.is_definitely_non_null()
+    
+    def test_refine_ifnonnull_false_from_top(self):
+        """After ifnonnull is NOT taken, refine to MAYBE_NULL."""
+        top = NonNullDomain.top()
+        refined = top.refine_ifnonnull_false()
+        assert refined.is_maybe_null()
+    
+    def test_refine_ifnonnull_false_from_nonnull_is_bottom(self):
+        """
+        If DEFINITELY_NON_NULL but ifnonnull not taken → contradiction → BOTTOM.
+        
+        This proves the fallthrough is DEAD.
+        """
+        nonnull = NonNullDomain.definitely_non_null()
+        refined = nonnull.refine_ifnonnull_false()
+        assert refined.is_bottom()
+
+
+class TestNonNullDeadCodeDetection:
+    """Test NonNullDomain dead code detection capabilities."""
+    
+    def test_ifnull_definitely_false_when_nonnull(self):
+        """
+        If reference is DEFINITELY_NON_NULL, ifnull branch is DEAD.
+        
+        This is the KEY IAB contribution for dead code elimination.
+        """
+        nonnull = NonNullDomain.definitely_non_null()
+        assert nonnull.ifnull_definitely_false()
+    
+    def test_ifnull_not_definitely_false_when_maybe(self):
+        """If reference is MAYBE_NULL, ifnull might be taken."""
+        maybe = NonNullDomain.maybe_null()
+        assert not maybe.ifnull_definitely_false()
+    
+    def test_ifnull_not_definitely_false_when_top(self):
+        """If reference is TOP (unknown), ifnull might be taken."""
+        top = NonNullDomain.top()
+        assert not top.ifnull_definitely_false()
+    
+    def test_ifnonnull_definitely_true_when_nonnull(self):
+        """
+        If reference is DEFINITELY_NON_NULL, ifnonnull always jumps.
+        
+        The fallthrough path is DEAD.
+        """
+        nonnull = NonNullDomain.definitely_non_null()
+        assert nonnull.ifnonnull_definitely_true()
+    
+    def test_ifnonnull_not_definitely_true_when_maybe(self):
+        """If reference is MAYBE_NULL, ifnonnull might not jump."""
+        maybe = NonNullDomain.maybe_null()
+        assert not maybe.ifnonnull_definitely_true()
+    
+    def test_may_be_null_when_maybe(self):
+        """MAYBE_NULL references may throw NPE."""
+        maybe = NonNullDomain.maybe_null()
+        assert maybe.may_be_null()
+    
+    def test_may_be_null_when_top(self):
+        """TOP references may throw NPE (conservative)."""
+        top = NonNullDomain.top()
+        assert top.may_be_null()
+    
+    def test_may_not_be_null_when_nonnull(self):
+        """DEFINITELY_NON_NULL references cannot throw NPE."""
+        nonnull = NonNullDomain.definitely_non_null()
+        assert not nonnull.may_be_null()
+    
+    def test_may_not_be_null_when_bottom(self):
+        """BOTTOM references cannot throw NPE (unreachable)."""
+        bottom = NonNullDomain.bottom()
+        assert not bottom.may_be_null()
 
 
 class TestDomainContainment:

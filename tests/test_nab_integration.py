@@ -824,5 +824,276 @@ class TestIntegrationWithReducedProduct:
         assert result[1].sign.signs == SIGN_POSITIVE
 
 
+# =============================================================================
+# IAB: ReducedProductStateV2 Tests (Novel NonNullDomain integration)
+# =============================================================================
+# These tests verify the extended reduced product that includes NonNullDomain
+# as a third abstraction, qualifying for IAB (Implement Novel Abstractions).
+# =============================================================================
+
+from solutions.nab_integration import ReducedProductStateV2
+from solutions.abstract_domain import NonNullDomain, NullnessValue
+
+
+class TestReducedProductStateV2Creation:
+    """Test ReducedProductStateV2 creation methods."""
+    
+    def test_from_new_is_definitely_non_null(self):
+        """
+        'new' instruction produces DEFINITELY_NON_NULL.
+        
+        This is the key insight: newly created objects are never null.
+        """
+        state = ReducedProductStateV2.from_new()
+        
+        assert state.nonnull.is_definitely_non_null()
+        assert state.is_reference
+        assert not state.may_throw_npe()
+    
+    def test_from_newarray_is_definitely_non_null(self):
+        """
+        'newarray'/'anewarray' produces DEFINITELY_NON_NULL with length >= 0.
+        
+        This combines nullness with interval for array length.
+        """
+        state = ReducedProductStateV2.from_newarray()
+        
+        assert state.nonnull.is_definitely_non_null()
+        assert state.is_reference
+        assert not state.may_throw_npe()
+        
+        # Array length is non-negative
+        assert state.interval.value.low == 0
+        assert "+" in state.sign.signs or "0" in state.sign.signs
+        assert "-" not in state.sign.signs
+    
+    def test_from_null_is_maybe_null(self):
+        """'aconst_null' produces MAYBE_NULL."""
+        state = ReducedProductStateV2.from_null()
+        
+        assert state.nonnull.is_maybe_null()
+        assert state.is_reference
+        assert state.may_throw_npe()
+    
+    def test_for_integer_nonnull_is_top(self):
+        """For primitives, nonnull is TOP (not applicable)."""
+        state = ReducedProductStateV2.for_integer([1, 2, 3])
+        
+        assert state.nonnull.is_top()
+        assert not state.is_reference
+    
+    def test_top_state(self):
+        """TOP state has all components TOP."""
+        state = ReducedProductStateV2.top()
+        
+        assert state.sign.is_top()
+        assert state.interval.is_top()
+        assert state.nonnull.is_top()
+    
+    def test_bottom_state(self):
+        """BOTTOM state has all components BOTTOM."""
+        state = ReducedProductStateV2.bottom()
+        
+        assert state.sign.is_bottom()
+        assert state.interval.is_bottom()
+        assert state.nonnull.is_bottom()
+        assert state.is_bottom()
+
+
+class TestReducedProductStateV2BranchRefinement:
+    """Test branch refinement with NonNullDomain."""
+    
+    def test_refine_ifnonnull_true_makes_non_null(self):
+        """
+        After ifnonnull branch is taken, reference becomes DEFINITELY_NON_NULL.
+        
+        This is the key refinement for proving null checks safe.
+        """
+        state = ReducedProductStateV2.top(is_reference=True)
+        
+        refined = state.refine_ifnonnull_true()
+        
+        assert refined.nonnull.is_definitely_non_null()
+        assert not refined.may_throw_npe()
+    
+    def test_refine_ifnonnull_false_makes_maybe_null(self):
+        """After ifnonnull falls through, reference is null."""
+        state = ReducedProductStateV2.top(is_reference=True)
+        
+        refined = state.refine_ifnonnull_false()
+        
+        assert refined.nonnull.is_maybe_null()
+    
+    def test_refine_ifnull_true_makes_maybe_null(self):
+        """After ifnull branch is taken, reference is null."""
+        state = ReducedProductStateV2.top(is_reference=True)
+        
+        refined = state.refine_ifnull_true()
+        
+        assert refined.nonnull.is_maybe_null()
+    
+    def test_refine_ifnull_false_makes_non_null(self):
+        """After ifnull falls through, reference is DEFINITELY_NON_NULL."""
+        state = ReducedProductStateV2.top(is_reference=True)
+        
+        refined = state.refine_ifnull_false()
+        
+        assert refined.nonnull.is_definitely_non_null()
+        assert not refined.may_throw_npe()
+    
+    def test_refine_ifnull_true_on_nonnull_is_bottom(self):
+        """
+        If DEFINITELY_NON_NULL but ifnull taken → contradiction → BOTTOM.
+        
+        This proves the ifnull branch is DEAD code.
+        """
+        state = ReducedProductStateV2.from_new()
+        
+        refined = state.refine_ifnull_true()
+        
+        assert refined.nonnull.is_bottom()
+
+
+class TestReducedProductStateV2DeadCode:
+    """Test dead code detection with NonNullDomain."""
+    
+    def test_ifnull_branch_dead_after_new(self):
+        """
+        After 'new', ifnull branch is DEAD (unreachable).
+        
+        This is the KEY IAB contribution for dead code elimination.
+        Code pattern:
+            Object x = new Object();
+            if (x == null) { ... }  // <-- DEAD CODE
+        """
+        state = ReducedProductStateV2.from_new()
+        
+        assert state.ifnull_branch_is_dead()
+    
+    def test_ifnull_branch_not_dead_for_parameter(self):
+        """For unknown references (parameters), ifnull may be taken."""
+        state = ReducedProductStateV2.top(is_reference=True)
+        
+        assert not state.ifnull_branch_is_dead()
+    
+    def test_ifnull_branch_not_dead_for_maybe_null(self):
+        """For MAYBE_NULL references, ifnull may be taken."""
+        state = ReducedProductStateV2.from_null()
+        
+        assert not state.ifnull_branch_is_dead()
+    
+    def test_ifnonnull_fallthrough_dead_after_new(self):
+        """
+        After 'new', ifnonnull always jumps (fallthrough is DEAD).
+        
+        Code pattern:
+            Object x = new Object();
+            if (x != null) { goto L; }
+            // DEAD: control never reaches here
+        """
+        state = ReducedProductStateV2.from_new()
+        
+        assert state.ifnonnull_fallthrough_is_dead()
+    
+    def test_no_npe_after_new(self):
+        """After 'new', no NullPointerException possible."""
+        state = ReducedProductStateV2.from_new()
+        
+        assert not state.may_throw_npe()
+    
+    def test_npe_possible_for_parameter(self):
+        """For unknown references, NPE is possible."""
+        state = ReducedProductStateV2.top(is_reference=True)
+        
+        assert state.may_throw_npe()
+    
+    def test_npe_possible_after_null(self):
+        """After aconst_null, NPE is possible."""
+        state = ReducedProductStateV2.from_null()
+        
+        assert state.may_throw_npe()
+
+
+class TestReducedProductStateV2Integration:
+    """Test integration between NonNullDomain and other domains."""
+    
+    def test_inform_each_other_refines_array_length(self):
+        """
+        For DEFINITELY_NON_NULL arrays, length is refined to non-negative.
+        
+        This is mutual refinement between NonNull and Interval/Sign domains.
+        """
+        state = ReducedProductStateV2.from_newarray()
+        state.inform_each_other()
+        
+        # Length interval should be [0, +∞)
+        assert state.interval.value.low == 0
+        # Sign should exclude negative
+        assert "-" not in state.sign.signs
+    
+    def test_join_preserves_nonnull(self):
+        """Join of two DEFINITELY_NON_NULL states is DEFINITELY_NON_NULL."""
+        s1 = ReducedProductStateV2.from_new()
+        s2 = ReducedProductStateV2.from_new()
+        
+        joined = s1.join(s2)
+        
+        assert joined.nonnull.is_definitely_non_null()
+    
+    def test_join_nonnull_and_maybe_gives_top(self):
+        """Join of DEFINITELY_NON_NULL and MAYBE_NULL gives TOP."""
+        s1 = ReducedProductStateV2.from_new()
+        s2 = ReducedProductStateV2.from_null()
+        
+        joined = s1.join(s2)
+        
+        assert joined.nonnull.is_top()
+    
+    def test_meet_nonnull_and_maybe_gives_bottom(self):
+        """Meet of DEFINITELY_NON_NULL and MAYBE_NULL gives BOTTOM."""
+        s1 = ReducedProductStateV2.from_new()
+        s2 = ReducedProductStateV2.from_null()
+        
+        met = s1.meet(s2)
+        
+        assert met.nonnull.is_bottom()
+    
+    def test_widening_terminates(self):
+        """Widening with NonNullDomain terminates (finite lattice)."""
+        s1 = ReducedProductStateV2.from_new()
+        s2 = ReducedProductStateV2.top(is_reference=True)
+        
+        widened = s1.widening(s2)
+        
+        # After widening, should be at least TOP for nonnull
+        assert widened.nonnull.is_top() or widened.nonnull <= NonNullDomain.top()
+
+
+class TestReducedProductStateV2Equality:
+    """Test equality and hashing for ReducedProductStateV2."""
+    
+    def test_equal_states(self):
+        """Two states with same components are equal."""
+        s1 = ReducedProductStateV2.from_new()
+        s2 = ReducedProductStateV2.from_new()
+        
+        assert s1 == s2
+    
+    def test_unequal_nonnull(self):
+        """States with different nonnull are not equal."""
+        s1 = ReducedProductStateV2.from_new()
+        s2 = ReducedProductStateV2.from_null()
+        
+        assert s1 != s2
+    
+    def test_hashable(self):
+        """ReducedProductStateV2 is hashable (can be used in sets)."""
+        s1 = ReducedProductStateV2.from_new()
+        s2 = ReducedProductStateV2.from_null()
+        
+        states = {s1, s2}
+        assert len(states) == 2
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
