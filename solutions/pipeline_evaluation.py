@@ -12,9 +12,11 @@ This script provides a complete pipeline that connects ALL features:
 - NCR: Dead code removal via NOP replacement
 
 Usage:
-    python solutions/pipeline_evaluation.py                          # Run on default method
+    python solutions/pipeline_evaluation.py                          # Run on ALL methods (uses existing traces)
     python solutions/pipeline_evaluation.py Simple.assertPositive    # Run on specific method
     python solutions/pipeline_evaluation.py --all                    # Run on ALL methods
+    python solutions/pipeline_evaluation.py --regenerate             # Regenerate traces before analysis
+    python solutions/pipeline_evaluation.py --clean                  # Clean stale traces (for deleted classes)
     python solutions/pipeline_evaluation.py --list                   # List available methods
 
 DTU 02242 Program Analysis - Group 21
@@ -683,11 +685,16 @@ def run_pipeline(method_id: str, verbose: bool = True) -> PipelineResult:
     return result
 
 
-def generate_traces(trace_dir: Path = Path("traces"), verbose: bool = True) -> bool:
+def generate_traces(trace_dir: Path = Path("traces"), verbose: bool = True, clean: bool = True) -> bool:
     """
     Generate execution traces for ALL JPAMB test cases using the concrete interpreter.
     
     This is the IIN (Implement Interpreter) step that must run before analysis.
+    
+    Args:
+        trace_dir: Directory to write traces to
+        verbose: Show detailed output
+        clean: If True, remove stale trace files for classes that no longer exist
     
     Returns:
         True if trace generation succeeded
@@ -696,6 +703,14 @@ def generate_traces(trace_dir: Path = Path("traces"), verbose: bool = True) -> b
         print("=" * 80)
         print("STEP 0: IIN - Generate Execution Traces for ALL Methods")
         print("=" * 80)
+    
+    # Clean stale traces first
+    if clean and trace_dir.exists():
+        stale_count = _clean_stale_traces(trace_dir, verbose)
+        if verbose and stale_count > 0:
+            print(f"\nCleaned {stale_count} stale trace files")
+    
+    if verbose:
         print(f"\nRunning: uv run jpamb trace --trace-dir {trace_dir}")
     
     # Run jpamb trace command to generate traces for all methods
@@ -722,6 +737,54 @@ def generate_traces(trace_dir: Path = Path("traces"), verbose: bool = True) -> b
         print(f"\n✓ Generated {len(trace_files)} trace files in {trace_dir}/")
     
     return True
+
+
+def _clean_stale_traces(trace_dir: Path, verbose: bool = False) -> int:
+    """
+    Remove trace files for classes that no longer exist in target/decompiled.
+    
+    Returns:
+        Number of stale trace files removed
+    """
+    decompiled_dir = Path("target/decompiled")
+    if not decompiled_dir.exists():
+        return 0
+    
+    # Get set of existing class names from decompiled JSONs
+    existing_classes = set()
+    for json_file in decompiled_dir.rglob("*.json"):
+        # Convert path to class name: target/decompiled/jpamb/cases/Simple.json → jpamb.cases.Simple
+        rel_path = json_file.relative_to(decompiled_dir)
+        class_name = str(rel_path.with_suffix("")).replace("/", ".").replace("\\", ".")
+        existing_classes.add(class_name)
+    
+    # Check each trace file
+    stale_count = 0
+    for trace_file in trace_dir.glob("*.json"):
+        # Extract class name from trace filename
+        # jpamb.cases.Simple_assertPositive_IV.json → jpamb.cases.Simple
+        trace_name = trace_file.stem
+        parts = trace_name.split("_")
+        
+        # Find class name (everything before method_descriptor)
+        if len(parts) >= 2:
+            remaining = "_".join(parts[:-1])  # Remove descriptor
+            dot_parts = remaining.split(".")
+            if len(dot_parts) >= 3:
+                # Last dot_part contains ClassName_methodName
+                last = dot_parts[-1]
+                underscore_idx = last.find("_")
+                if underscore_idx > 0:
+                    class_name = ".".join(dot_parts[:-1]) + "." + last[:underscore_idx]
+                    
+                    # Check if class exists
+                    if class_name not in existing_classes:
+                        if verbose:
+                            print(f"  Removing stale trace: {trace_file.name} (class {class_name} no longer exists)")
+                        trace_file.unlink()
+                        stale_count += 1
+    
+    return stale_count
 
 
 def run_pipeline_all(verbose: bool = False, regenerate_traces: bool = True) -> List[PipelineResult]:
@@ -880,12 +943,28 @@ def list_available_methods() -> List[str]:
 def main():
     """Main entry point with command-line argument handling."""
     regenerate = False
+    clean_only = False
     args = sys.argv[1:]
     
     # Check for --regenerate flag
     if "--regenerate" in args:
         regenerate = True
         args.remove("--regenerate")
+    
+    # Check for --clean flag
+    if "--clean" in args:
+        clean_only = True
+        args.remove("--clean")
+    
+    # Handle --clean flag (just clean stale traces)
+    if clean_only:
+        trace_dir = Path("traces")
+        if trace_dir.exists():
+            stale_count = _clean_stale_traces(trace_dir, verbose=True)
+            print(f"\nCleaned {stale_count} stale trace files")
+        else:
+            print("No traces directory found")
+        return
     
     if args:
         arg = args[0]
