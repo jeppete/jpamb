@@ -511,20 +511,6 @@ def step_ncr(
         print("STEP 4: NCR - Dead Code Removal")
         print("=" * 80)
     
-    if not iai_result.unreachable_pcs:
-        if verbose:
-            print("\nNo dead code to remove")
-            print("\n✓ NCR complete (no changes)")
-        
-        return NCRResult(
-            method_id=isy_result.method_id,
-            original_size=0,
-            rewritten_size=0,
-            bytes_nopified=0,
-            output_file=None,
-            valid=True
-        )
-    
     # Find class file
     class_file = Path(f"target/classes/{isy_result.class_name}.class")
     
@@ -542,29 +528,54 @@ def step_ncr(
             valid=False
         )
     
-    if verbose:
-        print(f"\nInput: {class_file}")
-        print(f"Dead PCs: {sorted(iai_result.unreachable_pcs)}")
-    
-    # Read original
-    with open(class_file, 'rb') as f:
-        original = f.read()
-    
-    # Rewrite with NOPs
-    rewriter = CodeRewriter()
-    rewritten = rewriter.rewrite(
-        class_file,
-        iai_result.unreachable_pcs,
-        isy_result.method_name
-    )
-    
-    # Save debloated file
+    # Check if we already have a debloated version (for accumulating changes across methods)
     output_dir = Path(f"target/debloated/{isy_result.class_name}").parent
-    output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / f"{isy_result.class_name.split('/')[-1]}.class"
     
-    with open(output_file, 'wb') as f:
-        f.write(rewritten)
+    # Only process if there's dead code OR we already have a debloated version (accumulating)
+    if not iai_result.unreachable_pcs and not output_file.exists():
+        if verbose:
+            print("\nNo dead code to remove - skipping class file")
+            print("\n✓ NCR complete (no changes needed)")
+        
+        return NCRResult(
+            method_id=isy_result.method_id,
+            original_size=0,
+            rewritten_size=0,
+            bytes_nopified=0,
+            output_file=None,
+            valid=True
+        )
+    
+    # Use debloated file as input if it exists (to accumulate changes from previous methods)
+    input_file = output_file if output_file.exists() else class_file
+    
+    if verbose:
+        print(f"\nInput: {input_file}")
+        if iai_result.unreachable_pcs:
+            print(f"Dead PCs: {sorted(iai_result.unreachable_pcs)}")
+        else:
+            print("No dead code in this method (preserving previous changes)")
+    
+    # Read input (either original or previously debloated)
+    with open(input_file, 'rb') as f:
+        original = f.read()
+    
+    # Rewrite with NOPs (or keep unchanged if no dead code in this method)
+    if iai_result.unreachable_pcs:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        rewriter = CodeRewriter()
+        rewritten = rewriter.rewrite(
+            input_file,
+            iai_result.unreachable_pcs,
+            isy_result.method_name
+        )
+        
+        # Save debloated file
+        with open(output_file, 'wb') as f:
+            f.write(rewritten)
+    else:
+        rewritten = original
     
     # Calculate bytes NOPified
     bytes_nopified = 0
@@ -796,6 +807,15 @@ def run_pipeline_all(verbose: bool = False, regenerate_traces: bool = True) -> L
     
     if total_instr > 0:
         print(f"\nTotal: {total_dead}/{total_instr} dead instructions ({total_dead/total_instr*100:.1f}%)")
+    
+    # List debloated classes
+    debloated_dir = Path("target/debloated/jpamb/cases")
+    if debloated_dir.exists():
+        debloated_classes = list(debloated_dir.glob("*.class"))
+        if debloated_classes:
+            print(f"\nDebloated classes ({len(debloated_classes)}):")
+            for c in sorted(debloated_classes):
+                print(f"  {c.name}")
     
     return results
 

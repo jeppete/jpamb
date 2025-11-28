@@ -345,7 +345,7 @@ def step(state: State) -> State | str:
             # Unconditional jump
             frame.pc = PC(frame.pc.method, target)
             return state
-        case jvm.Invoke(static=True, method=method_ref):
+        case jvm.InvokeStatic(method=method_ref):
             # Static method invocation - for simplicity, handle basic cases
             method_name = str(method_ref.extension)
             if "println" in method_name or "print" in method_name:
@@ -365,7 +365,7 @@ def step(state: State) -> State | str:
                 # Unknown static method - for testing, just continue
                 frame.pc += 1
                 return state
-        case jvm.Invoke(static=False, method=method_ref):
+        case jvm.InvokeVirtual(method=method_ref) | jvm.InvokeInterface(method=method_ref) | jvm.InvokeSpecial(method=method_ref):
             # Instance method invocation
             method_name = str(method_ref.extension)
             if "<init>" in method_name:
