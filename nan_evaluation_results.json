@@ -1,0 +1,204 @@
+[
+  {
+    "method": "jpamb.cases.Simple.assertPositive:(I)V",
+    "description": "Assert x > 0. Dynamic trace shows x is always positive.",
+    "sample_input": {
+      "0": [
+        1,
+        5,
+        10,
+        100
+      ]
+    },
+    "refined_init": {
+      "0": "{+}"
+    },
+    "static_only": {
+      "unreachable_count": 1,
+      "unreachable_pcs": [
+        18
+      ],
+      "outcomes": [
+        "assertion error",
+        "null pointer"
+      ]
+    },
+    "with_nan": {
+      "unreachable_count": 5,
+      "unreachable_pcs": [
+        10,
+        13,
+        14,
+        17,
+        18
+      ],
+      "outcomes": []
+    },
+    "improvement": {
+      "additional_unreachable": 4,
+      "fewer_outcomes": 2,
+      "improved": true
+    }
+  },
+  {
+    "method": "jpamb.cases.Simple.divideByN:(I)I",
+    "description": "Divide 100/n. Dynamic trace shows n is never zero.",
+    "sample_input": {
+      "0": [
+        1,
+        2,
+        5,
+        10
+      ]
+    },
+    "refined_init": {
+      "0": "{+}"
+    },
+    "static_only": {
+      "unreachable_count": 0,
+      "unreachable_pcs": [],
+      "outcomes": [
+        "divide by zero",
+        "ok"
+      ]
+    },
+    "with_nan": {
+      "unreachable_count": 0,
+      "unreachable_pcs": [],
+      "outcomes": [
+        "ok"
+      ]
+    },
+    "improvement": {
+      "additional_unreachable": 0,
+      "fewer_outcomes": 1,
+      "improved": true
+    }
+  },
+  {
+    "method": "jpamb.cases.Simple.checkBeforeDivideByN:(I)I",
+    "description": "If n > 0, divide. Dynamic trace confirms n > 0.",
+    "sample_input": {
+      "0": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "refined_init": {
+      "0": "{+}"
+    },
+    "static_only": {
+      "unreachable_count": 4,
+      "unreachable_pcs": [
+        18,
+        19,
+        20,
+        21
+      ],
+      "outcomes": [
+        "assertion error",
+        "null pointer"
+      ]
+    },
+    "with_nan": {
+      "unreachable_count": 8,
+      "unreachable_pcs": [
+        10,
+        13,
+        14,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "outcomes": []
+    },
+    "improvement": {
+      "additional_unreachable": 4,
+      "fewer_outcomes": 2,
+      "improved": true
+    }
+  },
+  {
+    "method": "jpamb.cases.Simple.assertBoolean:(Z)V",
+    "description": "Assert boolean b. Dynamic trace shows b is always true (1).",
+    "sample_input": {
+      "0": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    "refined_init": {
+      "0": "{+}"
+    },
+    "static_only": {
+      "unreachable_count": 1,
+      "unreachable_pcs": [
+        18
+      ],
+      "outcomes": [
+        "assertion error",
+        "null pointer"
+      ]
+    },
+    "with_nan": {
+      "unreachable_count": 5,
+      "unreachable_pcs": [
+        10,
+        13,
+        14,
+        17,
+        18
+      ],
+      "outcomes": []
+    },
+    "improvement": {
+      "additional_unreachable": 4,
+      "fewer_outcomes": 2,
+      "improved": true
+    }
+  },
+  {
+    "method": "jpamb.cases.Simple.divideByNMinus10054203:(I)I",
+    "description": "Divide by n-10054203. Dynamic trace shows n != 10054203.",
+    "sample_input": {
+      "0": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "refined_init": {
+      "0": "{+}"
+    },
+    "static_only": {
+      "unreachable_count": 0,
+      "unreachable_pcs": [],
+      "outcomes": [
+        "divide by zero",
+        "ok"
+      ]
+    },
+    "with_nan": {
+      "unreachable_count": 0,
+      "unreachable_pcs": [],
+      "outcomes": [
+        "divide by zero",
+        "ok"
+      ]
+    },
+    "improvement": {
+      "additional_unreachable": 0,
+      "fewer_outcomes": 0,
+      "improved": false
+    }
+  }
+]
