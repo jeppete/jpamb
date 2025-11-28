@@ -696,11 +696,28 @@ class ReducedProductState:
     
     def widening(self, other: 'ReducedProductState') -> 'ReducedProductState':
         """
-        Widening for fixpoint computation.
+        Widening operator for fixpoint computation.
+        
+        IBA (Implement Unbounded Static Analysis) - 7 points
+        
+        Applies widening to each component of the reduced product:
+        - SignSet: widening is just join (finite lattice, always terminates)
+        - IntervalDomain: classic interval widening (unstable → ±∞)
+        - NonNullDomain: widening is just join (finite lattice, bool here)
+        
+        Note: We do NOT apply mutual refinement after widening to ensure
+        monotonic convergence toward the fixpoint.
+        
+        Args:
+            other: The new state from the current iteration
+            
+        Returns:
+            Widened state that guarantees termination
         """
         new_sign = self.sign | other.sign  # SignSet widening is just join
         new_interval = self.interval.widening(other.interval)
-        new_nonnull = self.nonnull.widening(other.nonnull)
+        # nonnull is a bool - join is OR (keeps True if either is True)
+        new_nonnull = self.nonnull or other.nonnull
         new_is_ref = self.is_reference or other.is_reference
         
         return ReducedProductState(
@@ -711,6 +728,50 @@ class ReducedProductState:
             _refinement_history=[]
         )
         # Don't refine after widening to ensure termination
+    
+    def narrowing(self, other: 'ReducedProductState') -> 'ReducedProductState':
+        """
+        Narrowing operator for improving precision after widening fixpoint.
+        
+        IBA (Implement Unbounded Static Analysis) - 7 points
+        
+        After widening reaches a fixpoint (possibly with ±∞ bounds), narrowing
+        can recover some precision by replacing infinite bounds with finite ones.
+        
+        Applies narrowing to each component:
+        - SignSet: no narrowing needed (finite lattice)
+        - IntervalDomain: replace ±∞ with finite bounds from other
+        - NonNullDomain: no narrowing needed (bool, use AND for meet)
+        
+        Note: We DO apply mutual refinement after narrowing to maximize precision.
+        
+        Args:
+            other: The state from the narrowing iteration
+            
+        Returns:
+            Narrowed state with improved precision
+        """
+        # SignSet: use meet for narrowing (can only get more precise)
+        new_sign = self.sign & other.sign
+        
+        # IntervalDomain: use dedicated narrowing operator
+        new_interval = self.interval.narrowing(other.interval)
+        
+        # NonNullDomain: nonnull is a bool, meet is AND
+        new_nonnull = self.nonnull and other.nonnull
+        
+        new_is_ref = self.is_reference and other.is_reference
+        
+        result = ReducedProductState(
+            sign=new_sign,
+            interval=new_interval,
+            nonnull=new_nonnull,
+            is_reference=new_is_ref,
+            _refinement_history=["narrowing applied"]
+        )
+        # Apply mutual refinement after narrowing for maximum precision
+        result.inform_each_other()
+        return result
     
     def get_refinement_history(self) -> List[str]:
         """Get the history of refinement steps applied."""

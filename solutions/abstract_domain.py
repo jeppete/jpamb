@@ -428,7 +428,34 @@ class IntervalDomain:
         return IntervalDomain(IntervalValue(new_low, new_high))
     
     def widening(self, other: "IntervalDomain") -> "IntervalDomain":
-        """Widening operation for loops to ensure termination."""
+        """
+        Widening operator for ensuring termination in loops.
+        
+        IBA (Implement Unbounded Static Analysis) - 7 points
+        
+        Classic interval widening: when a bound is unstable (changes between 
+        iterations), immediately extrapolate to infinity (-∞ or +∞).
+        
+        Algorithm:
+            old ∇ new = 
+                low:  -∞ if new.low < old.low else old.low
+                high: +∞ if new.high > old.high else old.high
+        
+        This guarantees termination because:
+        - The lattice of intervals with {-∞, +∞} is finite height
+        - Widening can only increase to ±∞ (never oscillates)
+        
+        Example:
+            [0,0] ∇ [0,1] = [0, +∞]   (high increased → widen to +∞)
+            [0,5] ∇ [-1,5] = [-∞, 5]  (low decreased → widen to -∞)
+            [0,5] ∇ [-1,10] = [-∞, +∞] (both changed → TOP)
+        
+        Args:
+            other: The new interval from the current iteration
+            
+        Returns:
+            Widened interval that guarantees termination
+        """
         if self.is_bottom():
             return other
         if other.is_bottom():
@@ -438,15 +465,66 @@ class IntervalDomain:
         new_low = self.value.low
         new_high = self.value.high
         
-        # If other's low bound is smaller, widen to -∞
-        if (other.value.low is not None and self.value.low is not None and
-            other.value.low < self.value.low):
+        # If other's low bound is smaller (or becomes unbounded), widen to -∞
+        if other.value.low is None:
+            new_low = None
+        elif self.value.low is not None and other.value.low < self.value.low:
             new_low = None
         
-        # If other's high bound is larger, widen to +∞
-        if (other.value.high is not None and self.value.high is not None and
-            other.value.high > self.value.high):
+        # If other's high bound is larger (or becomes unbounded), widen to +∞
+        if other.value.high is None:
             new_high = None
+        elif self.value.high is not None and other.value.high > self.value.high:
+            new_high = None
+        
+        return IntervalDomain(IntervalValue(new_low, new_high))
+    
+    def narrowing(self, other: "IntervalDomain") -> "IntervalDomain":
+        """
+        Narrowing operator for improving precision after widening.
+        
+        IBA (Implement Unbounded Static Analysis) - 7 points
+        
+        After fixpoint is reached with widening, narrowing can recover some
+        precision by iterating once more with meet operations, replacing 
+        infinite bounds with finite ones if the other interval has them.
+        
+        Algorithm:
+            old Δ new =
+                low:  new.low if old.low == -∞ and new.low is finite else old.low
+                high: new.high if old.high == +∞ and new.high is finite else old.high
+        
+        This is sound because:
+        - We only narrow infinite bounds to finite ones
+        - The finite bound comes from a sound analysis (the iteration step)
+        - old ⊇ new is a precondition (new is more precise)
+        
+        Example:
+            [-∞, +∞] Δ [0, 100] = [0, 100]  (both bounds recovered)
+            [-∞, 10] Δ [0, 10] = [0, 10]    (low bound recovered)
+            [0, +∞] Δ [0, 50] = [0, 50]     (high bound recovered)
+        
+        Args:
+            other: The interval from the narrowing iteration
+            
+        Returns:
+            Narrowed interval with improved precision
+        """
+        if self.is_bottom():
+            return self
+        if other.is_bottom():
+            return other  # Narrowing to bottom is valid
+        
+        new_low = self.value.low
+        new_high = self.value.high
+        
+        # Narrow low bound: if self is -∞ and other has a finite bound, use it
+        if self.value.low is None and other.value.low is not None:
+            new_low = other.value.low
+        
+        # Narrow high bound: if self is +∞ and other has a finite bound, use it
+        if self.value.high is None and other.value.high is not None:
+            new_high = other.value.high
         
         return IntervalDomain(IntervalValue(new_low, new_high))
 
