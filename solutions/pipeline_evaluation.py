@@ -55,6 +55,10 @@ class ISYResult:
     instruction_count: int
     cfg_edges: List[Tuple[int, int]]
     all_offsets: Set[int]
+    # Line number table: offset -> line number
+    line_table: Dict[int, int] = None
+    # All unique statement line numbers
+    all_statements: Set[int] = None
 
 
 @dataclass
@@ -83,6 +87,10 @@ class IAIResult:
     unreachable_pcs: Set[int]
     outcomes: Set[str]
     dead_code_count: int
+    # Statement-level dead code info
+    dead_statements: Set[int] = None  # Line numbers of dead statements
+    dead_statement_count: int = 0
+    total_statements: int = 0
 
 
 @dataclass
@@ -169,18 +177,25 @@ def step_isy(method_id: str, suite: Suite, verbose: bool = True) -> ISYResult:
             if 'default' in bc:
                 cfg_edges.append((offset, bc['default']))
     
+    # Build line number table (offset -> line number)
+    line_entries = method_data.get('code', {}).get('lines', [])
+    line_table = _build_line_table(line_entries, all_offsets)
+    all_statements = set(line_table.values()) if line_table else set()
+    
     if verbose:
         print(f"\nMethod: {method_id}")
         print(f"  Class: {class_name}")
         print(f"  Method: {method_name}")
         print(f"  Instructions: {len(bytecode)}")
+        print(f"  Statements: {len(all_statements)}")
         print(f"  CFG Edges: {len(cfg_edges)}")
         
         print(f"\nBytecode ({len(bytecode)} instructions):")
         print("-" * 60)
         for bc in bytecode:
             offset = bc.get('offset', 0)
-            print(f"  [{offset:3d}] {_format_instruction(bc)}")
+            line = line_table.get(offset, "?")
+            print(f"  [{offset:3d}] L{line}: {_format_instruction(bc)}")
         
         print("\n✓ ISY complete")
     
@@ -191,8 +206,43 @@ def step_isy(method_id: str, suite: Suite, verbose: bool = True) -> ISYResult:
         bytecode=bytecode,
         instruction_count=len(bytecode),
         cfg_edges=cfg_edges,
-        all_offsets=all_offsets
+        all_offsets=all_offsets,
+        line_table=line_table,
+        all_statements=all_statements
     )
+
+
+def _build_line_table(line_entries: List[dict], all_offsets: Set[int]) -> Dict[int, int]:
+    """
+    Build a mapping from bytecode offset to source line number.
+    
+    The line number table entries indicate that a range of bytecode offsets
+    starting at 'offset' corresponds to 'line'. We expand this to map each
+    individual offset to its line.
+    """
+    if not line_entries:
+        return {}
+    
+    # Sort entries by offset
+    sorted_entries = sorted(line_entries, key=lambda e: e.get('offset', 0))
+    
+    line_table = {}
+    for i, entry in enumerate(sorted_entries):
+        start_offset = entry.get('offset', 0)
+        line = entry.get('line', 0)
+        
+        # Find the end offset (start of next entry or infinity)
+        if i + 1 < len(sorted_entries):
+            end_offset = sorted_entries[i + 1].get('offset', 0)
+        else:
+            end_offset = float('inf')
+        
+        # Map all offsets in this range to this line
+        for offset in all_offsets:
+            if start_offset <= offset < end_offset:
+                line_table[offset] = line
+    
+    return line_table
 
 
 def _format_instruction(bc: dict) -> str:
@@ -468,6 +518,34 @@ def step_iai(
     # Compute unreachable PCs
     unreachable = isy_result.all_offsets - visited
     
+    # Compute dead statements
+    # A statement is FULLY dead only if ALL its instructions are dead
+    # A statement is PARTIALLY dead if SOME of its instructions are dead
+    fully_dead_statements = set()
+    partially_dead_statements = set()
+    
+    if isy_result.line_table:
+        # Group instructions by line number
+        line_to_pcs = {}
+        for pc, line in isy_result.line_table.items():
+            if line not in line_to_pcs:
+                line_to_pcs[line] = set()
+            line_to_pcs[line].add(pc)
+        
+        for line, pcs in line_to_pcs.items():
+            dead_pcs = pcs & unreachable
+            if dead_pcs:
+                if dead_pcs == pcs:
+                    # ALL instructions for this line are dead
+                    fully_dead_statements.add(line)
+                else:
+                    # SOME instructions for this line are dead
+                    partially_dead_statements.add(line)
+    
+    # Use fully dead statements as the primary metric
+    dead_statements = fully_dead_statements
+    total_statements = len(isy_result.all_statements) if isy_result.all_statements else 0
+    
     if verbose:
         print("\nResults:")
         print(f"  Visited PCs: {sorted(visited)}")
@@ -476,10 +554,15 @@ def step_iai(
         print(f"  Outcomes: {outcomes}")
         
         if unreachable:
-            print(f"\nDead Code Found ({len(unreachable)} instructions):")
+            print(f"\nDead Code Found:")
+            print(f"  Instructions: {len(unreachable)} dead / {len(isy_result.all_offsets)} total")
+            print(f"  Statements (fully dead): {len(fully_dead_statements)} / {total_statements} (lines: {sorted(fully_dead_statements)})")
+            if partially_dead_statements:
+                print(f"  Statements (partially dead): {len(partially_dead_statements)} (lines: {sorted(partially_dead_statements)})")
             for offset in sorted(unreachable):
                 bc = next((b for b in isy_result.bytecode if b.get('offset') == offset), {})
-                print(f"  [{offset:3d}] {_format_instruction(bc)} - DEAD")
+                line = isy_result.line_table.get(offset, "?") if isy_result.line_table else "?"
+                print(f"  [{offset:3d}] L{line}: {_format_instruction(bc)} - DEAD")
         else:
             print("\nNo dead code found (all instructions reachable)")
         
@@ -490,7 +573,10 @@ def step_iai(
         visited_pcs=visited,
         unreachable_pcs=unreachable,
         outcomes=outcomes,
-        dead_code_count=len(unreachable)
+        dead_code_count=len(unreachable),
+        dead_statements=dead_statements,
+        dead_statement_count=len(dead_statements),
+        total_statements=total_statements
     )
 
 
@@ -842,7 +928,10 @@ def run_pipeline_all(verbose: bool = False, regenerate_traces: bool = True) -> L
             if result.error:
                 print(f"  ✗ Error: {result.error[:50]}...")
             elif result.iai:
-                print(f"  ✓ Dead code: {result.iai.dead_code_count} instructions")
+                stmt_info = ""
+                if result.iai.dead_statement_count > 0:
+                    stmt_info = f", {result.iai.dead_statement_count} statements"
+                print(f"  ✓ Dead code: {result.iai.dead_code_count} instructions{stmt_info}")
             print()
     
     # Summary
@@ -861,15 +950,28 @@ def run_pipeline_all(verbose: bool = False, regenerate_traces: bool = True) -> L
     
     if dead_code_found:
         print("\nMethods with dead code:")
+        print(f"  {'Method':<50} {'Instructions':<15} {'Statements':<15}")
+        print("  " + "-" * 80)
         for r in dead_code_found:
-            pct = r.iai.dead_code_count / r.isy.instruction_count * 100
-            print(f"  {r.method_id}: {r.iai.dead_code_count} instructions ({pct:.1f}%)")
+            instr_pct = r.iai.dead_code_count / r.isy.instruction_count * 100
+            stmt_pct = (r.iai.dead_statement_count / r.iai.total_statements * 100) if r.iai.total_statements > 0 else 0
+            short_name = r.method_id.split(".")[-1]
+            print(f"  {short_name:<50} {r.iai.dead_code_count:>3} ({instr_pct:>4.1f}%)      {r.iai.dead_statement_count:>3} ({stmt_pct:>4.1f}%)")
     
-    total_dead = sum(r.iai.dead_code_count for r in success if r.iai)
+    # Totals
+    total_dead_instr = sum(r.iai.dead_code_count for r in success if r.iai)
     total_instr = sum(r.isy.instruction_count for r in success if r.isy)
+    total_dead_stmt = sum(r.iai.dead_statement_count for r in success if r.iai)
+    total_stmt = sum(r.iai.total_statements for r in success if r.iai)
+    
+    print("\n" + "=" * 80)
+    print("TOTALS")
+    print("=" * 80)
     
     if total_instr > 0:
-        print(f"\nTotal: {total_dead}/{total_instr} dead instructions ({total_dead/total_instr*100:.1f}%)")
+        print(f"\nInstruction-level: {total_dead_instr}/{total_instr} dead ({total_dead_instr/total_instr*100:.1f}%)")
+    if total_stmt > 0:
+        print(f"Statement-level:   {total_dead_stmt}/{total_stmt} dead ({total_dead_stmt/total_stmt*100:.1f}%)")
     
     # List debloated classes
     debloated_dir = Path("target/debloated/jpamb/cases")
