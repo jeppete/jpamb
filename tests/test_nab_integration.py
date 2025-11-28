@@ -825,18 +825,17 @@ class TestIntegrationWithReducedProduct:
 
 
 # =============================================================================
-# IAB: ReducedProductStateV2 Tests (Novel NonNullDomain integration)
+# IAB: ReducedProductState with NonNullDomain Tests (Novel abstraction)
 # =============================================================================
 # These tests verify the extended reduced product that includes NonNullDomain
 # as a third abstraction, qualifying for IAB (Implement Novel Abstractions).
 # =============================================================================
 
-from solutions.nab_integration import ReducedProductStateV2
 from solutions.abstract_domain import NonNullDomain, NullnessValue
 
 
-class TestReducedProductStateV2Creation:
-    """Test ReducedProductStateV2 creation methods."""
+class TestReducedProductStateNonNullCreation:
+    """Test ReducedProductState creation methods with NonNullDomain."""
     
     def test_from_new_is_definitely_non_null(self):
         """
@@ -844,7 +843,7 @@ class TestReducedProductStateV2Creation:
         
         This is the key insight: newly created objects are never null.
         """
-        state = ReducedProductStateV2.from_new()
+        state = ReducedProductState.from_new()
         
         assert state.nonnull.is_definitely_non_null()
         assert state.is_reference
@@ -856,7 +855,7 @@ class TestReducedProductStateV2Creation:
         
         This combines nullness with interval for array length.
         """
-        state = ReducedProductStateV2.from_newarray()
+        state = ReducedProductState.from_newarray()
         
         assert state.nonnull.is_definitely_non_null()
         assert state.is_reference
@@ -869,7 +868,7 @@ class TestReducedProductStateV2Creation:
     
     def test_from_null_is_maybe_null(self):
         """'aconst_null' produces MAYBE_NULL."""
-        state = ReducedProductStateV2.from_null()
+        state = ReducedProductState.from_null()
         
         assert state.nonnull.is_maybe_null()
         assert state.is_reference
@@ -877,22 +876,22 @@ class TestReducedProductStateV2Creation:
     
     def test_for_integer_nonnull_is_top(self):
         """For primitives, nonnull is TOP (not applicable)."""
-        state = ReducedProductStateV2.for_integer([1, 2, 3])
+        state = ReducedProductState.for_integer([1, 2, 3])
         
         assert state.nonnull.is_top()
         assert not state.is_reference
     
-    def test_top_state(self):
-        """TOP state has all components TOP."""
-        state = ReducedProductStateV2.top()
+    def test_top_state_with_reference(self):
+        """TOP state for reference has all components TOP."""
+        state = ReducedProductState.top(is_reference=True)
         
         assert state.sign.is_top()
         assert state.interval.is_top()
         assert state.nonnull.is_top()
     
-    def test_bottom_state(self):
+    def test_bottom_state_all_bottom(self):
         """BOTTOM state has all components BOTTOM."""
-        state = ReducedProductStateV2.bottom()
+        state = ReducedProductState.bottom()
         
         assert state.sign.is_bottom()
         assert state.interval.is_bottom()
@@ -900,7 +899,7 @@ class TestReducedProductStateV2Creation:
         assert state.is_bottom()
 
 
-class TestReducedProductStateV2BranchRefinement:
+class TestReducedProductStateNonNullBranchRefinement:
     """Test branch refinement with NonNullDomain."""
     
     def test_refine_ifnonnull_true_makes_non_null(self):
@@ -909,7 +908,7 @@ class TestReducedProductStateV2BranchRefinement:
         
         This is the key refinement for proving null checks safe.
         """
-        state = ReducedProductStateV2.top(is_reference=True)
+        state = ReducedProductState.top(is_reference=True)
         
         refined = state.refine_ifnonnull_true()
         
@@ -918,7 +917,7 @@ class TestReducedProductStateV2BranchRefinement:
     
     def test_refine_ifnonnull_false_makes_maybe_null(self):
         """After ifnonnull falls through, reference is null."""
-        state = ReducedProductStateV2.top(is_reference=True)
+        state = ReducedProductState.top(is_reference=True)
         
         refined = state.refine_ifnonnull_false()
         
@@ -926,7 +925,7 @@ class TestReducedProductStateV2BranchRefinement:
     
     def test_refine_ifnull_true_makes_maybe_null(self):
         """After ifnull branch is taken, reference is null."""
-        state = ReducedProductStateV2.top(is_reference=True)
+        state = ReducedProductState.top(is_reference=True)
         
         refined = state.refine_ifnull_true()
         
@@ -934,7 +933,7 @@ class TestReducedProductStateV2BranchRefinement:
     
     def test_refine_ifnull_false_makes_non_null(self):
         """After ifnull falls through, reference is DEFINITELY_NON_NULL."""
-        state = ReducedProductStateV2.top(is_reference=True)
+        state = ReducedProductState.top(is_reference=True)
         
         refined = state.refine_ifnull_false()
         
@@ -947,14 +946,14 @@ class TestReducedProductStateV2BranchRefinement:
         
         This proves the ifnull branch is DEAD code.
         """
-        state = ReducedProductStateV2.from_new()
+        state = ReducedProductState.from_new()
         
         refined = state.refine_ifnull_true()
         
         assert refined.nonnull.is_bottom()
 
 
-class TestReducedProductStateV2DeadCode:
+class TestReducedProductStateNonNullDeadCode:
     """Test dead code detection with NonNullDomain."""
     
     def test_ifnull_branch_dead_after_new(self):
@@ -966,19 +965,19 @@ class TestReducedProductStateV2DeadCode:
             Object x = new Object();
             if (x == null) { ... }  // <-- DEAD CODE
         """
-        state = ReducedProductStateV2.from_new()
+        state = ReducedProductState.from_new()
         
         assert state.ifnull_branch_is_dead()
     
     def test_ifnull_branch_not_dead_for_parameter(self):
         """For unknown references (parameters), ifnull may be taken."""
-        state = ReducedProductStateV2.top(is_reference=True)
+        state = ReducedProductState.top(is_reference=True)
         
         assert not state.ifnull_branch_is_dead()
     
     def test_ifnull_branch_not_dead_for_maybe_null(self):
         """For MAYBE_NULL references, ifnull may be taken."""
-        state = ReducedProductStateV2.from_null()
+        state = ReducedProductState.from_null()
         
         assert not state.ifnull_branch_is_dead()
     
@@ -991,30 +990,30 @@ class TestReducedProductStateV2DeadCode:
             if (x != null) { goto L; }
             // DEAD: control never reaches here
         """
-        state = ReducedProductStateV2.from_new()
+        state = ReducedProductState.from_new()
         
         assert state.ifnonnull_fallthrough_is_dead()
     
     def test_no_npe_after_new(self):
         """After 'new', no NullPointerException possible."""
-        state = ReducedProductStateV2.from_new()
+        state = ReducedProductState.from_new()
         
         assert not state.may_throw_npe()
     
     def test_npe_possible_for_parameter(self):
         """For unknown references, NPE is possible."""
-        state = ReducedProductStateV2.top(is_reference=True)
+        state = ReducedProductState.top(is_reference=True)
         
         assert state.may_throw_npe()
     
     def test_npe_possible_after_null(self):
         """After aconst_null, NPE is possible."""
-        state = ReducedProductStateV2.from_null()
+        state = ReducedProductState.from_null()
         
         assert state.may_throw_npe()
 
 
-class TestReducedProductStateV2Integration:
+class TestReducedProductStateNonNullIntegration:
     """Test integration between NonNullDomain and other domains."""
     
     def test_inform_each_other_refines_array_length(self):
@@ -1023,7 +1022,7 @@ class TestReducedProductStateV2Integration:
         
         This is mutual refinement between NonNull and Interval/Sign domains.
         """
-        state = ReducedProductStateV2.from_newarray()
+        state = ReducedProductState.from_newarray()
         state.inform_each_other()
         
         # Length interval should be [0, +∞)
@@ -1033,8 +1032,8 @@ class TestReducedProductStateV2Integration:
     
     def test_join_preserves_nonnull(self):
         """Join of two DEFINITELY_NON_NULL states is DEFINITELY_NON_NULL."""
-        s1 = ReducedProductStateV2.from_new()
-        s2 = ReducedProductStateV2.from_new()
+        s1 = ReducedProductState.from_new()
+        s2 = ReducedProductState.from_new()
         
         joined = s1.join(s2)
         
@@ -1042,8 +1041,8 @@ class TestReducedProductStateV2Integration:
     
     def test_join_nonnull_and_maybe_gives_top(self):
         """Join of DEFINITELY_NON_NULL and MAYBE_NULL gives TOP."""
-        s1 = ReducedProductStateV2.from_new()
-        s2 = ReducedProductStateV2.from_null()
+        s1 = ReducedProductState.from_new()
+        s2 = ReducedProductState.from_null()
         
         joined = s1.join(s2)
         
@@ -1051,8 +1050,8 @@ class TestReducedProductStateV2Integration:
     
     def test_meet_nonnull_and_maybe_gives_bottom(self):
         """Meet of DEFINITELY_NON_NULL and MAYBE_NULL gives BOTTOM."""
-        s1 = ReducedProductStateV2.from_new()
-        s2 = ReducedProductStateV2.from_null()
+        s1 = ReducedProductState.from_new()
+        s2 = ReducedProductState.from_null()
         
         met = s1.meet(s2)
         
@@ -1060,8 +1059,8 @@ class TestReducedProductStateV2Integration:
     
     def test_widening_terminates(self):
         """Widening with NonNullDomain terminates (finite lattice)."""
-        s1 = ReducedProductStateV2.from_new()
-        s2 = ReducedProductStateV2.top(is_reference=True)
+        s1 = ReducedProductState.from_new()
+        s2 = ReducedProductState.top(is_reference=True)
         
         widened = s1.widening(s2)
         
@@ -1069,27 +1068,27 @@ class TestReducedProductStateV2Integration:
         assert widened.nonnull.is_top() or widened.nonnull <= NonNullDomain.top()
 
 
-class TestReducedProductStateV2Equality:
-    """Test equality and hashing for ReducedProductStateV2."""
+class TestReducedProductStateNonNullEquality:
+    """Test equality and hashing for ReducedProductState with NonNull."""
     
-    def test_equal_states(self):
-        """Two states with same components are equal."""
-        s1 = ReducedProductStateV2.from_new()
-        s2 = ReducedProductStateV2.from_new()
+    def test_equal_states_with_nonnull(self):
+        """Two states with same components including nonnull are equal."""
+        s1 = ReducedProductState.from_new()
+        s2 = ReducedProductState.from_new()
         
         assert s1 == s2
     
     def test_unequal_nonnull(self):
         """States with different nonnull are not equal."""
-        s1 = ReducedProductStateV2.from_new()
-        s2 = ReducedProductStateV2.from_null()
+        s1 = ReducedProductState.from_new()
+        s2 = ReducedProductState.from_null()
         
         assert s1 != s2
     
-    def test_hashable(self):
-        """ReducedProductStateV2 is hashable (can be used in sets)."""
-        s1 = ReducedProductStateV2.from_new()
-        s2 = ReducedProductStateV2.from_null()
+    def test_hashable_with_nonnull(self):
+        """ReducedProductState with nonnull is hashable (can be used in sets)."""
+        s1 = ReducedProductState.from_new()
+        s2 = ReducedProductState.from_null()
         
         states = {s1, s2}
         assert len(states) == 2
