@@ -246,7 +246,9 @@ def astep(
 
         target = getattr(op, "target", None)
         if True in poss and target is not None:
-            t = n.with_pc(PC(pc.method, int(target)))
+            # target is an instruction index, convert to byte offset
+            target_offset = bc.index_to_offset(pc.method, int(target))
+            t = n.with_pc(PC(pc.method, target_offset))
             yield t
 
         if False in poss:
@@ -267,7 +269,9 @@ def astep(
 
         target = getattr(op, "target", None)
         if target is not None:
-            t = n.with_pc(PC(pc.method, int(target)))
+            # target is an instruction index, convert to byte offset
+            target_offset = bc.index_to_offset(pc.method, int(target))
+            t = n.with_pc(PC(pc.method, target_offset))
             yield t
 
         nxt = bc.next_pc(pc)
@@ -280,7 +284,9 @@ def astep(
         n = frame.copy()
         target = getattr(op, "target", None)
         if target is not None:
-            yield n.with_pc(PC(pc.method, int(target)))
+            # target is an instruction index, convert to byte offset
+            target_offset = bc.index_to_offset(pc.method, int(target))
+            yield n.with_pc(PC(pc.method, target_offset))
         else:
             nxt = bc.next_pc(pc)
             if nxt is not None:

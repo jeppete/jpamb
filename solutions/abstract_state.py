@@ -141,7 +141,7 @@ class Bytecode:
         Successor program counter for fall‑through control flow.
 
         We do *not* guess if the given offset has no exact successor, because
-        jpamb’s offsets are exact; a missing successor just means the path
+        jpamb's offsets are exact; a missing successor just means the path
         terminates.
         """
         self._ensure(pc.method)
@@ -152,6 +152,29 @@ class Bytecode:
             if off > pc.offset:
                 return PC(pc.method, off)
         return None
+
+    def index_to_offset(self, method: jvm.AbsMethodID, index: int) -> int:
+        """
+        Convert instruction index to byte offset.
+        
+        In jpamb's bytecode JSON, jump targets are specified as instruction
+        indices (0-based position in the bytecode list), but PCs use byte
+        offsets. This method converts from index to offset.
+        
+        Args:
+            method: The method containing the instruction
+            index: The instruction index (0-based)
+            
+        Returns:
+            The byte offset of the instruction at that index
+        """
+        self._ensure(method)
+        assert self._ops is not None
+        ops = self._ops[method]
+        if 0 <= index < len(ops):
+            return int(getattr(ops[index], "offset", 0))
+        # If index is out of bounds, return it as-is (may cause IndexError later)
+        return index
 
 
 # --- Per‑instruction abstract frame -----------------------------------------
