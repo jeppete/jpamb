@@ -16,7 +16,7 @@ solutions = [
     # Path("solutions") / "apriori.py",
     #Path("solutions") / "bytecoder.py",
     # Path("solutions") / "cheater.py",
-    Path("solutions") / "syntaxer.py",
+    Path("solutions") / "components" / "syntaxer.py",
     #Path("solutions") / "my_analyzer.py",
 ]
 
