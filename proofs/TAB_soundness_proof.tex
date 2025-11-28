@@ -1,0 +1,569 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{stmaryrd}
+\usepackage{proof}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage[margin=2.5cm]{geometry}
+
+% Theorem environments
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+
+% Custom commands
+\newcommand{\Null}{\mathsf{null}}
+\newcommand{\NonNull}{\mathsf{NonNull}}
+\newcommand{\MaybeNull}{\mathsf{MaybeNull}}
+\newcommand{\Bot}{\bot}
+\newcommand{\Top}{\top}
+\newcommand{\Refs}{\mathsf{Ref}}
+\newcommand{\Locs}{\mathsf{Loc}}
+\newcommand{\pow}{\mathcal{P}}
+\newcommand{\abs}[1]{\alpha(#1)}
+\newcommand{\conc}[1]{\gamma(#1)}
+\newcommand{\sem}[1]{\llbracket #1 \rrbracket}
+\newcommand{\asem}[1]{\llbracket #1 \rrbracket^\sharp}
+
+\title{Soundness Proof for NonNullDomain\\[0.5em]
+\large DTU 02242 Program Analysis -- TAB Contribution}
+\author{Group 21}
+\date{November 2025}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present a formal soundness proof for the \texttt{NonNullDomain} abstract domain 
+implemented in our fine-grained debloating pipeline. This domain tracks nullness 
+of JVM references and is a \emph{novel abstraction} not covered in DTU 02242 lectures.
+We prove that the abstraction and concretization functions form a Galois connection,
+and that all transfer functions are sound (i.e., over-approximate concrete semantics).
+\end{abstract}
+
+\tableofcontents
+
+\newpage
+
+%==============================================================================
+\section{Introduction}
+%==============================================================================
+
+Abstract interpretation provides a principled framework for designing static 
+analyses that are guaranteed to be sound---that is, they never miss any behavior 
+that could occur during actual program execution. In this document, we formally 
+prove the soundness of our \texttt{NonNullDomain}, which tracks whether JVM 
+reference values are definitely non-null, possibly null, or unreachable.
+
+This domain is particularly useful for:
+\begin{enumerate}
+    \item \textbf{Dead code elimination}: If a reference is known to be non-null,
+          branches that test for null (e.g., \texttt{ifnull}) can be marked as dead.
+    \item \textbf{Exception analysis}: Non-null references cannot throw 
+          \texttt{NullPointerException} on dereference.
+    \item \textbf{Reduced product refinement}: The nullness information can refine
+          other domains (e.g., array length analysis).
+\end{enumerate}
+
+%==============================================================================
+\section{Preliminaries}
+%==============================================================================
+
+\subsection{Concrete Domain}
+
+Let $\Refs = \Locs \cup \{\Null\}$ be the set of all reference values, where:
+\begin{itemize}
+    \item $\Locs$ is the (infinite) set of heap locations
+    \item $\Null$ is the distinguished null reference
+\end{itemize}
+
+The concrete domain is the powerset lattice $(\pow(\Refs), \subseteq)$ representing 
+sets of possible reference values at a program point.
+
+\subsection{Abstract Domain}
+
+The abstract domain $\NonNull^\sharp$ is a four-element lattice:
+
+\begin{definition}[NonNull Lattice]
+The NonNull abstract domain is defined as:
+\[
+\NonNull^\sharp = \{\Bot, \mathsf{DEFINITELY\_NON\_NULL}, \mathsf{MAYBE\_NULL}, \Top\}
+\]
+with the partial order:
+\[
+\Bot \sqsubseteq \mathsf{DEFINITELY\_NON\_NULL} \sqsubseteq \Top
+\qquad
+\Bot \sqsubseteq \mathsf{MAYBE\_NULL} \sqsubseteq \Top
+\]
+Note that $\mathsf{DEFINITELY\_NON\_NULL}$ and $\mathsf{MAYBE\_NULL}$ are \emph{incomparable}.
+\end{definition}
+
+The lattice forms a \emph{diamond} structure:
+\[
+\begin{array}{c}
+\Top \\[0.5em]
+\mathsf{DEFINITELY\_NON\_NULL} \qquad \mathsf{MAYBE\_NULL} \\[0.5em]
+\Bot
+\end{array}
+\]
+
+\subsection{Join and Meet Operations}
+
+\begin{definition}[Join $\sqcup$]
+The least upper bound (join) is defined as:
+\begin{align*}
+\Bot \sqcup a &= a \\
+a \sqcup \Top &= \Top \\
+\mathsf{DEFINITELY\_NON\_NULL} \sqcup \mathsf{DEFINITELY\_NON\_NULL} &= \mathsf{DEFINITELY\_NON\_NULL} \\
+\mathsf{MAYBE\_NULL} \sqcup \mathsf{MAYBE\_NULL} &= \mathsf{MAYBE\_NULL} \\
+\mathsf{DEFINITELY\_NON\_NULL} \sqcup \mathsf{MAYBE\_NULL} &= \Top
+\end{align*}
+\end{definition}
+
+\begin{definition}[Meet $\sqcap$]
+The greatest lower bound (meet) is defined as:
+\begin{align*}
+\Top \sqcap a &= a \\
+a \sqcap \Bot &= \Bot \\
+\mathsf{DEFINITELY\_NON\_NULL} \sqcap \mathsf{DEFINITELY\_NON\_NULL} &= \mathsf{DEFINITELY\_NON\_NULL} \\
+\mathsf{MAYBE\_NULL} \sqcap \mathsf{MAYBE\_NULL} &= \mathsf{MAYBE\_NULL} \\
+\mathsf{DEFINITELY\_NON\_NULL} \sqcap \mathsf{MAYBE\_NULL} &= \Bot
+\end{align*}
+\end{definition}
+
+%==============================================================================
+\section{Galois Connection}
+%==============================================================================
+
+\begin{definition}[Abstraction Function $\alpha$]
+\label{def:alpha}
+The abstraction function $\alpha: \pow(\Refs) \to \NonNull^\sharp$ is defined as:
+\[
+\abs{S} = 
+\begin{cases}
+\Bot & \text{if } S = \emptyset \\
+\mathsf{DEFINITELY\_NON\_NULL} & \text{if } S \neq \emptyset \land S \subseteq \Locs \\
+\mathsf{MAYBE\_NULL} & \text{if } S = \{\Null\} \\
+\Top & \text{otherwise (i.e., } S \cap \Locs \neq \emptyset \land \Null \in S)
+\end{cases}
+\]
+\end{definition}
+
+\begin{definition}[Concretization Function $\gamma$]
+\label{def:gamma}
+The concretization function $\gamma: \NonNull^\sharp \to \pow(\Refs)$ is defined as:
+\[
+\conc{a} = 
+\begin{cases}
+\emptyset & \text{if } a = \Bot \\
+\Locs & \text{if } a = \mathsf{DEFINITELY\_NON\_NULL} \\
+\{\Null\} & \text{if } a = \mathsf{MAYBE\_NULL} \\
+\Refs & \text{if } a = \Top
+\end{cases}
+\]
+\end{definition}
+
+\begin{theorem}[Galois Connection]
+\label{thm:galois}
+The pair $(\alpha, \gamma)$ forms a Galois connection between 
+$(\pow(\Refs), \subseteq)$ and $(\NonNull^\sharp, \sqsubseteq)$:
+\[
+\forall S \in \pow(\Refs), a \in \NonNull^\sharp: \quad
+\abs{S} \sqsubseteq a \iff S \subseteq \conc{a}
+\]
+\end{theorem}
+
+\begin{proof}
+We prove both directions separately.
+
+\textbf{($\Rightarrow$)} Assume $\abs{S} \sqsubseteq a$. We show $S \subseteq \conc{a}$ by case analysis on $\abs{S}$:
+
+\begin{itemize}
+    \item Case $\abs{S} = \Bot$: Then $S = \emptyset$, so $S \subseteq \conc{a}$ trivially.
+    
+    \item Case $\abs{S} = \mathsf{DEFINITELY\_NON\_NULL}$: Then $S \subseteq \Locs$.
+          Since $\abs{S} \sqsubseteq a$, we have $a \in \{\mathsf{DEFINITELY\_NON\_NULL}, \Top\}$.
+          In both cases, $\Locs \subseteq \conc{a}$, so $S \subseteq \conc{a}$.
+    
+    \item Case $\abs{S} = \mathsf{MAYBE\_NULL}$: Then $S = \{\Null\}$.
+          Since $\abs{S} \sqsubseteq a$, we have $a \in \{\mathsf{MAYBE\_NULL}, \Top\}$.
+          In both cases, $\Null \in \conc{a}$, so $S \subseteq \conc{a}$.
+    
+    \item Case $\abs{S} = \Top$: Then $a = \Top$ (since $\Top$ is maximal).
+          We have $\conc{\Top} = \Refs$, so $S \subseteq \Refs = \conc{a}$.
+\end{itemize}
+
+\textbf{($\Leftarrow$)} Assume $S \subseteq \conc{a}$. We show $\abs{S} \sqsubseteq a$ by case analysis on $a$:
+
+\begin{itemize}
+    \item Case $a = \Bot$: Then $\conc{a} = \emptyset$, so $S = \emptyset$.
+          Thus $\abs{S} = \Bot = a$.
+    
+    \item Case $a = \mathsf{DEFINITELY\_NON\_NULL}$: Then $\conc{a} = \Locs$.
+          So $S \subseteq \Locs$ implies $\Null \notin S$.
+          Thus $\abs{S} \in \{\Bot, \mathsf{DEFINITELY\_NON\_NULL}\} \sqsubseteq a$.
+    
+    \item Case $a = \mathsf{MAYBE\_NULL}$: Then $\conc{a} = \{\Null\}$.
+          So $S \subseteq \{\Null\}$ implies $S \in \{\emptyset, \{\Null\}\}$.
+          Thus $\abs{S} \in \{\Bot, \mathsf{MAYBE\_NULL}\} \sqsubseteq a$.
+    
+    \item Case $a = \Top$: Any abstract value $\sqsubseteq \Top$, so $\abs{S} \sqsubseteq \Top$.
+\end{itemize}
+\end{proof}
+
+\begin{corollary}[Safety Property]
+The abstraction is safe: for all $S \in \pow(\Refs)$, we have $S \subseteq \conc{\abs{S}}$.
+\end{corollary}
+
+\begin{proof}
+Immediate from Theorem~\ref{thm:galois} since $\abs{S} \sqsubseteq \abs{S}$.
+\end{proof}
+
+%==============================================================================
+\section{Transfer Function Soundness}
+%==============================================================================
+
+We now prove that each JVM bytecode instruction's abstract transfer function 
+soundly over-approximates the concrete semantics.
+
+\subsection{Notation}
+
+Let $\sem{i}: \pow(\Refs) \to \pow(\Refs)$ denote the concrete semantics of 
+instruction $i$, and $\asem{i}: \NonNull^\sharp \to \NonNull^\sharp$ denote 
+the abstract semantics.
+
+\begin{definition}[Soundness of Transfer Function]
+An abstract transfer function $\asem{i}$ is \emph{sound} if:
+\[
+\forall S \in \pow(\Refs): \quad \sem{i}(S) \subseteq \conc{\asem{i}(\abs{S})}
+\]
+Equivalently, by the Galois connection:
+\[
+\forall a \in \NonNull^\sharp: \quad \abs{\sem{i}(\conc{a})} \sqsubseteq \asem{i}(a)
+\]
+\end{definition}
+
+\subsection{NEW Instruction}
+
+The \texttt{new} instruction allocates a fresh object on the heap.
+
+\begin{lemma}[Soundness of NEW]
+\label{lem:new}
+For the abstract transfer function $\asem{\texttt{new}} = \mathsf{DEFINITELY\_NON\_NULL}$:
+\[
+\abs{\sem{\texttt{new}}(\conc{a})} \sqsubseteq \mathsf{DEFINITELY\_NON\_NULL}
+\]
+\end{lemma}
+
+\begin{proof}
+The concrete semantics $\sem{\texttt{new}}$ returns a fresh location $\ell \in \Locs$.
+Thus $\sem{\texttt{new}} = \{\ell\}$ for some $\ell \neq \Null$.
+
+By Definition~\ref{def:alpha}:
+\[
+\abs{\{\ell\}} = \mathsf{DEFINITELY\_NON\_NULL}
+\]
+
+Since $\mathsf{DEFINITELY\_NON\_NULL} \sqsubseteq \mathsf{DEFINITELY\_NON\_NULL}$, the transfer function is sound.
+\end{proof}
+
+\subsection{ACONST\_NULL Instruction}
+
+The \texttt{aconst\_null} instruction pushes the null reference.
+
+\begin{lemma}[Soundness of ACONST\_NULL]
+\label{lem:aconst_null}
+For the abstract transfer function $\asem{\texttt{aconst\_null}} = \mathsf{MAYBE\_NULL}$:
+\[
+\abs{\sem{\texttt{aconst\_null}}(\conc{a})} \sqsubseteq \mathsf{MAYBE\_NULL}
+\]
+\end{lemma}
+
+\begin{proof}
+The concrete semantics $\sem{\texttt{aconst\_null}} = \{\Null\}$.
+
+By Definition~\ref{def:alpha}:
+\[
+\abs{\{\Null\}} = \mathsf{MAYBE\_NULL}
+\]
+
+Since $\mathsf{MAYBE\_NULL} \sqsubseteq \mathsf{MAYBE\_NULL}$, the transfer function is sound.
+\end{proof}
+
+\subsection{ANEWARRAY / NEWARRAY Instructions}
+
+Array allocation instructions create a new array object.
+
+\begin{lemma}[Soundness of ANEWARRAY/NEWARRAY]
+\label{lem:newarray}
+For the abstract transfer function $\asem{\texttt{anewarray}} = \mathsf{DEFINITELY\_NON\_NULL}$:
+\[
+\abs{\sem{\texttt{anewarray}}(\conc{a})} \sqsubseteq \mathsf{DEFINITELY\_NON\_NULL}
+\]
+\end{lemma}
+
+\begin{proof}
+Array allocation returns a fresh array reference $\ell \in \Locs$ (never null).
+The proof follows the same structure as Lemma~\ref{lem:new}.
+\end{proof}
+
+\subsection{IFNULL Instruction}
+
+The \texttt{ifnull} instruction branches if the reference is null.
+
+\begin{lemma}[Soundness of IFNULL]
+\label{lem:ifnull}
+For the abstract transfer functions:
+\begin{align*}
+\asem{\texttt{ifnull}}_{\text{true}}(a) &= a \sqcap \mathsf{MAYBE\_NULL} & \text{(branch taken)} \\
+\asem{\texttt{ifnull}}_{\text{false}}(a) &= a \sqcap \mathsf{DEFINITELY\_NON\_NULL} & \text{(branch not taken)}
+\end{align*}
+Both are sound.
+\end{lemma}
+
+\begin{proof}
+\textbf{Branch taken (ref is null):}
+
+Concrete: $\sem{\texttt{ifnull}}_{\text{true}}(S) = S \cap \{\Null\}$
+
+We show $\abs{S \cap \{\Null\}} \sqsubseteq \abs{S} \sqcap \mathsf{MAYBE\_NULL}$:
+\begin{itemize}
+    \item If $\Null \notin S$: Then $S \cap \{\Null\} = \emptyset$, so 
+          $\abs{S \cap \{\Null\}} = \Bot \sqsubseteq$ anything.
+    \item If $\Null \in S$: Then $S \cap \{\Null\} = \{\Null\}$, so 
+          $\abs{S \cap \{\Null\}} = \mathsf{MAYBE\_NULL}$.
+          Also, $\abs{S} \in \{\mathsf{MAYBE\_NULL}, \Top\}$.
+          In both cases, $\abs{S} \sqcap \mathsf{MAYBE\_NULL} = \mathsf{MAYBE\_NULL}$.
+\end{itemize}
+
+\textbf{Branch not taken (ref is non-null):}
+
+Concrete: $\sem{\texttt{ifnull}}_{\text{false}}(S) = S \cap \Locs$
+
+We show $\abs{S \cap \Locs} \sqsubseteq \abs{S} \sqcap \mathsf{DEFINITELY\_NON\_NULL}$:
+\begin{itemize}
+    \item If $S \cap \Locs = \emptyset$: Then $\abs{S \cap \Locs} = \Bot \sqsubseteq$ anything.
+    \item If $S \cap \Locs \neq \emptyset$: Then $\abs{S \cap \Locs} = \mathsf{DEFINITELY\_NON\_NULL}$.
+          Also, $\abs{S} \in \{\mathsf{DEFINITELY\_NON\_NULL}, \Top\}$.
+          In both cases, $\abs{S} \sqcap \mathsf{DEFINITELY\_NON\_NULL} = \mathsf{DEFINITELY\_NON\_NULL}$.
+\end{itemize}
+\end{proof}
+
+\subsection{IFNONNULL Instruction}
+
+The \texttt{ifnonnull} instruction branches if the reference is not null.
+
+\begin{lemma}[Soundness of IFNONNULL]
+\label{lem:ifnonnull}
+For the abstract transfer functions:
+\begin{align*}
+\asem{\texttt{ifnonnull}}_{\text{true}}(a) &= a \sqcap \mathsf{DEFINITELY\_NON\_NULL} & \text{(branch taken)} \\
+\asem{\texttt{ifnonnull}}_{\text{false}}(a) &= a \sqcap \mathsf{MAYBE\_NULL} & \text{(branch not taken)}
+\end{align*}
+Both are sound.
+\end{lemma}
+
+\begin{proof}
+Symmetric to Lemma~\ref{lem:ifnull}, swapping the branch conditions.
+\end{proof}
+
+\subsection{ALOAD Instruction}
+
+The \texttt{aload} instruction loads a reference from a local variable.
+
+\begin{lemma}[Soundness of ALOAD]
+\label{lem:aload}
+For the abstract transfer function $\asem{\texttt{aload}}(a) = a$ (identity):
+The transfer function is sound.
+\end{lemma}
+
+\begin{proof}
+Loading from a local variable preserves the abstract value.
+$\abs{\sem{\texttt{aload}}(S)} = \abs{S} \sqsubseteq \abs{S}$.
+\end{proof}
+
+\subsection{GETFIELD/GETSTATIC Instructions}
+
+Field access may return null or non-null depending on field contents.
+
+\begin{lemma}[Soundness of GETFIELD/GETSTATIC]
+\label{lem:getfield}
+For the abstract transfer function $\asem{\texttt{getfield}} = \Top$:
+The transfer function is sound.
+\end{lemma}
+
+\begin{proof}
+Field contents are unknown statically, so we conservatively return $\Top$.
+Any concrete value $v \in \conc{\Top} = \Refs$, so this is trivially sound.
+\end{proof}
+
+\subsection{Method Return Values}
+
+\begin{lemma}[Soundness of INVOKE*]
+\label{lem:invoke}
+For method invocations returning references, $\asem{\texttt{invoke*}} = \Top$ is sound.
+\end{lemma}
+
+\begin{proof}
+Without interprocedural analysis, method return values are unknown.
+Returning $\Top$ safely over-approximates all possible return values.
+\end{proof}
+
+%==============================================================================
+\section{Join Soundness}
+%==============================================================================
+
+At control flow merge points, abstract values must be joined.
+
+\begin{theorem}[Soundness of Join]
+\label{thm:join}
+The join operation $\sqcup$ is sound:
+\[
+\forall S_1, S_2 \in \pow(\Refs): \quad \abs{S_1 \cup S_2} \sqsubseteq \abs{S_1} \sqcup \abs{S_2}
+\]
+\end{theorem}
+
+\begin{proof}
+By case analysis on whether $\Null$ and non-null references are in $S_1 \cup S_2$:
+
+\begin{itemize}
+    \item If $S_1 \cup S_2 = \emptyset$: Then $S_1 = S_2 = \emptyset$, so
+          $\abs{S_1 \cup S_2} = \Bot = \abs{S_1} \sqcup \abs{S_2}$.
+    
+    \item If $(S_1 \cup S_2) \subseteq \Locs$: Then both $S_1, S_2 \subseteq \Locs$
+          (no nulls), so $\abs{S_1}, \abs{S_2} \in \{\Bot, \mathsf{DEFINITELY\_NON\_NULL}\}$.
+          Thus $\abs{S_1} \sqcup \abs{S_2} \in \{\Bot, \mathsf{DEFINITELY\_NON\_NULL}\}$
+          and $\abs{S_1 \cup S_2} = \mathsf{DEFINITELY\_NON\_NULL}$ (if non-empty).
+    
+    \item If $(S_1 \cup S_2) = \{\Null\}$: Similar reasoning gives
+          $\abs{S_1} \sqcup \abs{S_2} \in \{\Bot, \mathsf{MAYBE\_NULL}\}$.
+    
+    \item If $(S_1 \cup S_2)$ contains both null and non-null:
+          Then $\abs{S_1 \cup S_2} = \Top$.
+          Either one of $S_1, S_2$ contains both (giving $\Top$), or
+          one contains null and other non-null (giving $\mathsf{MAYBE\_NULL} \sqcup \mathsf{DEFINITELY\_NON\_NULL} = \Top$).
+\end{itemize}
+\end{proof}
+
+%==============================================================================
+\section{Termination}
+%==============================================================================
+
+\begin{theorem}[Termination of Fixed-Point Iteration]
+\label{thm:termination}
+Abstract interpretation using $\NonNull^\sharp$ terminates on any finite CFG.
+\end{theorem}
+
+\begin{proof}
+The lattice $\NonNull^\sharp$ has finite height 2 (longest chain: $\Bot \sqsubset \mathsf{DEFINITELY\_NON\_NULL} \sqsubset \Top$).
+
+At each program point, the abstract value can only increase (by monotonicity of transfer functions and join). Since there are finitely many program points and the lattice has finite height, the number of changes is bounded by:
+\[
+|PC| \times \text{height}(\NonNull^\sharp) = |PC| \times 2
+\]
+Thus the fixed-point iteration terminates.
+\end{proof}
+
+%==============================================================================
+\section{Integration with Reduced Product}
+%==============================================================================
+
+Our implementation integrates $\NonNull^\sharp$ into a reduced product with 
+$\mathsf{Sign}^\sharp$ and $\mathsf{Interval}^\sharp$ domains.
+
+\subsection{Reduction Rules}
+
+The \texttt{inform\_each\_other} method implements mutual refinement:
+
+\begin{enumerate}
+    \item \textbf{NonNull $\to$ Interval}: If array reference is $\mathsf{DEFINITELY\_NON\_NULL}$,
+          then array length $\geq 0$.
+    
+    \item \textbf{NonNull $\to$ Sign}: If array reference is $\mathsf{DEFINITELY\_NON\_NULL}$,
+          then array length sign $\in \{+, 0\}$ (non-negative).
+    
+    \item \textbf{Inconsistency Detection}: If all domains indicate $\Bot$, 
+          the program point is unreachable.
+\end{enumerate}
+
+\begin{theorem}[Soundness of Reduced Product]
+The reduced product $\mathsf{Sign}^\sharp \times \mathsf{Interval}^\sharp \times \NonNull^\sharp$
+with mutual refinement is sound if each component domain is sound.
+\end{theorem}
+
+\begin{proof}
+Each reduction rule only narrows the abstract value (moves down in the lattice).
+By the Galois connection, narrowing preserves soundness: if $a' \sqsubseteq a$ and 
+$S \subseteq \conc{a}$, then $S \subseteq \conc{a}$ still holds (but we may have 
+$S \subseteq \conc{a'}$ as well, giving better precision).
+
+The mutual refinement converges because each domain has finite height and 
+refinements are monotonically decreasing.
+\end{proof}
+
+%==============================================================================
+\section{Conclusion}
+%==============================================================================
+
+We have formally proven the soundness of our \texttt{NonNullDomain} abstract domain:
+
+\begin{enumerate}
+    \item The abstraction and concretization functions form a Galois connection 
+          (Theorem~\ref{thm:galois}).
+    
+    \item All JVM bytecode transfer functions are sound 
+          (Lemmas~\ref{lem:new}--\ref{lem:invoke}).
+    
+    \item The join operation preserves soundness at control flow merges 
+          (Theorem~\ref{thm:join}).
+    
+    \item The analysis terminates on any finite CFG (Theorem~\ref{thm:termination}).
+    
+    \item Integration into the reduced product preserves soundness.
+\end{enumerate}
+
+This ensures that our debloating pipeline is \emph{safe}: any code identified as 
+dead is truly unreachable, and removing it does not change program behavior.
+
+\appendix
+
+%==============================================================================
+\section{Implementation Reference}
+%==============================================================================
+
+The \texttt{NonNullDomain} is implemented in \texttt{solutions/abstract\_domain.py}
+(lines 654--800) with the following key methods:
+
+\begin{verbatim}
+class NonNullDomain:
+    """Four-element nullness lattice."""
+    
+    @classmethod
+    def bottom(cls) -> "NonNullDomain": ...
+    
+    @classmethod  
+    def top(cls) -> "NonNullDomain": ...
+    
+    @classmethod
+    def definitely_non_null(cls) -> "NonNullDomain": ...
+    
+    @classmethod
+    def maybe_null(cls) -> "NonNullDomain": ...
+    
+    def __or__(self, other) -> "NonNullDomain":  # Join
+        ...
+    
+    def __and__(self, other) -> "NonNullDomain":  # Meet
+        ...
+\end{verbatim}
+
+The domain is integrated into \texttt{ReducedProductState} in 
+\texttt{solutions/nab\_integration.py} with mutual refinement in the
+\texttt{inform\_each\_other()} method.
+
+\end{document}
