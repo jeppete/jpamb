@@ -36,7 +36,7 @@ from solutions.ir import (
     StatementType,
 )
 
-from solutions.cfg_builder import (
+from solutions.components.bytecode_analysis import (
     CFGBuilder,
     classify_opcode,
     build_cfg_from_json,

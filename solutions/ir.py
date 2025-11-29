@@ -362,13 +362,20 @@ class MethodIR:
         method_id: str
     ) -> MethodIR:
         """Build MethodIR from parsed method JSON data."""
-        from solutions.cfg_builder import CFGBuilder
+        from solutions.components.bytecode_analysis import CFGBuilder, ExceptionHandler as BAExceptionHandler
         from solutions.statement_grouper import StatementGrouper
         
         code = method_data.get("code", {})
         bytecode = code.get("bytecode", [])
         exceptions = code.get("exceptions", [])
         lines = code.get("lines", [])
+        
+        # Build index to offset mapping for exception handlers
+        index_to_offset = {}
+        for i, inst in enumerate(bytecode):
+            offset = inst.get("offset", -1)
+            if offset >= 0:
+                index_to_offset[i] = offset
         
         # Create IR instance
         ir = cls(
@@ -379,17 +386,26 @@ class MethodIR:
             max_stack=code.get("max_stack", 0),
         )
         
-        # Parse exception handlers
+        # Parse exception handlers (using bytecode_analysis version with index conversion)
+        ba_handlers = [
+            BAExceptionHandler.from_json(e, index_to_offset) for e in exceptions
+        ]
+        # Convert to ir.ExceptionHandler for compatibility
         ir.exception_handlers = [
-            ExceptionHandler.from_json(e) for e in exceptions
+            ExceptionHandler(
+                start_pc=h.start_pc,
+                end_pc=h.end_pc,
+                handler_pc=h.handler_pc,
+                catch_type=h.catch_type
+            ) for h in ba_handlers
         ]
         
         # Build line info
         for line_entry in lines:
             ir.line_info[line_entry["offset"]] = line_entry["line"]
         
-        # Build CFG
-        builder = CFGBuilder(bytecode, ir.exception_handlers)
+        # Build CFG (pass the bytecode_analysis handlers)
+        builder = CFGBuilder(bytecode, ba_handlers)
         ir.cfg = builder.build()
         ir.basic_blocks = builder.get_basic_blocks()
         
