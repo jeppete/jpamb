@@ -35,10 +35,7 @@ from solutions.components.syntaxer import BloatFinder  # noqa: E402
 from solutions.components.syntaxer.utils import create_java_parser  # noqa: E402
 
 # Import abstract interpreter with all domains (using full path from project root)
-from solutions.components.abstract_interpreter import (  # noqa: E402
-    interval_unbounded_run,
-    product_unbounded_run,
-)
+from solutions.components.abstract_interpreter import interval_unbounded_run, product_unbounded_run  # noqa: E402
 
 
 log = logging.getLogger(__name__)
