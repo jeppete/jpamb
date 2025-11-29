@@ -9,7 +9,7 @@ Can be used as a standalone tool or called by other analyses.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Set
+from typing import Dict, Set
 
 import jpamb
 from jpamb import jvm

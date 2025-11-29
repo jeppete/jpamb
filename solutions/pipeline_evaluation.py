@@ -26,7 +26,7 @@ import os
 import json
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Set, Tuple, Optional
+from typing import Dict, List, Set, Optional
 from dataclasses import dataclass
 
 # Add project path
@@ -1146,7 +1146,7 @@ def main():
             all_methods = list_all_methods_from_decompiled()
             
             print(f"All methods from decompiled JSON ({len(all_methods)} total):")
-            print(f"  [✓] = has trace, [○] = static-only analysis\n")
+            print("  [✓] = has trace, [○] = static-only analysis\n")
             
             for m in all_methods:
                 marker = "✓" if m in traced_methods else "○"

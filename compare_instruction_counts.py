@@ -9,7 +9,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from jpamb import jvm
-from jpamb.model import Suite
 
 # Get instruction counts from pipeline approach (ALL methods from decompiled)
 def get_pipeline_counts():
@@ -204,7 +203,7 @@ def main():
     debloater_total = sum(debloater_counts.values())
     
     print("\n" + "=" * 80)
-    print(f"TOTALS:")
+    print("TOTALS:")
     print(f"  Pipeline:  {pipeline_total} instructions")
     print(f"  Debloater: {debloater_total} instructions")
     print(f"  Difference: {debloater_total - pipeline_total:+d}")

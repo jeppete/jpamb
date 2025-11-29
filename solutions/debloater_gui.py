@@ -10,8 +10,6 @@ import tkinter as tk
 from tkinter import ttk, filedialog, scrolledtext
 from pathlib import Path
 import sys
-import logging
-from typing import Optional
 
 import jpamb
 from jpamb import jvm
@@ -24,7 +22,7 @@ for p in [PROJECT_ROOT, SOLUTIONS_DIR, COMPONENTS_DIR]:
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
-from debloater import Debloater, BatchDebloater, BatchResult
+from debloater import Debloater, BatchDebloater, BatchResult  # noqa: E402
 
 
 

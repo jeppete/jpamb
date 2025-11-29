@@ -125,7 +125,7 @@ def find_used_classes(root, source_bytes: bytes) -> set[str]:
                 # Get the text
                 text = node_text(node, source_bytes)
                 # Filter out keywords and common non-class identifiers
-                if text and not text.lower() in ("void", "var", "this", "super"):
+                if text and text.lower() not in ("void", "var", "this", "super"):
                     used.add(text)
             
             # Scoped identifiers (e.g., ClassName.method)
