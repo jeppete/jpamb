@@ -519,6 +519,9 @@ class Debloater:
         
         Uses line number tables in bytecode to map offsets → lines.
         
+        NOTE: The line_table "offset" field is actually an instruction INDEX,
+        not a byte offset! We need to convert byte offsets to indices first.
+        
         Args:
             classname: Class being analyzed
             bytecode_result: Results from bytecode analysis
@@ -542,10 +545,25 @@ class Debloater:
                 
                 dead_offsets = bytecode_result.dead_instructions[full_name]
                 code = method_dict.get("code", {})
+                bytecode = code.get("bytecode", [])
                 line_table = code.get("lines", [])
                 
+                # Build byte_offset → instruction_index mapping
+                # The line table uses instruction indices, not byte offsets!
+                offset_to_index = {}
+                for idx, inst in enumerate(bytecode):
+                    byte_offset = inst.get("offset", -1)
+                    if byte_offset >= 0:
+                        offset_to_index[byte_offset] = idx
+                
                 for offset in dead_offsets:
-                    line_num = self.offset_to_line(offset, line_table)
+                    # Convert byte offset to instruction index for line table lookup
+                    inst_index = offset_to_index.get(offset)
+                    if inst_index is not None:
+                        line_num = self.index_to_line(inst_index, line_table)
+                    else:
+                        line_num = None
+                    
                     if line_num:
                         mapped.dead_lines.add(line_num)
                         mapped.details.append({
@@ -562,12 +580,18 @@ class Debloater:
                 full_name = f"{classname}.{method_name}"
                 
                 if full_name in bytecode_result.unreachable_methods:
-                    # Get method's starting line
+                    # Get method's starting line (first entry in line table)
                     code = method_dict.get("code", {})
                     line_table = code.get("lines", [])
+                    bytecode = code.get("bytecode", [])
                     if line_table:
                         method_line = line_table[0].get("line")
-                        method_offset = line_table[0].get("offset", 0)
+                        # The "offset" in line_table is actually an instruction index
+                        first_inst_index = line_table[0].get("offset", 0)
+                        # Get the actual byte offset from the bytecode array
+                        method_offset = 0
+                        if bytecode and first_inst_index < len(bytecode):
+                            method_offset = bytecode[first_inst_index].get("offset", 0)
                         mapped.dead_methods.add(full_name)
                         mapped.dead_lines.add(method_line)
                         mapped.details.append({
@@ -585,21 +609,26 @@ class Debloater:
         
         return mapped
     
-    def offset_to_line(self, offset: int, line_table: List[dict]) -> Optional[int]:
+    def index_to_line(self, inst_index: int, line_table: List[dict]) -> Optional[int]:
         """
-        Convert bytecode offset to source line number.
+        Convert instruction index to source line number.
+        
+        NOTE: The line_table "offset" field is actually an instruction INDEX
+        (0-based position in the bytecode list), not a byte offset!
         
         Args:
-            offset: Bytecode offset
-            line_table: Line number table from bytecode
+            inst_index: Instruction index (position in bytecode array)
+            line_table: Line number table from bytecode (entries have "line" and "offset"
+                        where "offset" is actually an instruction index)
             
         Returns:
             Source line number, or None if not found
         """
         best_line = None
         for entry in line_table:
-            entry_offset = entry.get("offset", -1)
-            if entry_offset <= offset:
+            # "offset" in line_table is actually an instruction index
+            entry_index = entry.get("offset", -1)
+            if entry_index <= inst_index:
                 best_line = entry.get("line")
             else:
                 break
