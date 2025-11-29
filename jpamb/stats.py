@@ -6,7 +6,6 @@ from pathlib import Path
 import json
 import pandas as pd
 
-from . import utils
 from . import suite
 
 
@@ -170,8 +169,6 @@ def stats(files, report, verbose):
     tools_df = pd.DataFrame(tools)
 
     import plotly.graph_objects as go
-    import plotly.express as px
-    from plotly.subplots import make_subplots
 
     colors = {
         "cheater": "red",

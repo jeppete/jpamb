@@ -21,26 +21,21 @@ from pathlib import Path
 import jpamb
 from jpamb import jvm
 
-# Import analysis modules (using relative imports from components dir)
-from components.bytecode_analysis import BytecodeAnalyzer, AnalysisResult as BytecodeResult
-from components.syntaxer import BloatFinder
-from components.syntaxer.utils import create_java_parser
-
-# Import abstract interpreter with all domains (using full path from project root)
-from components.abstract_interpreter import (
-    interval_unbounded_run,
-    product_unbounded_run,
-    Bytecode,
-    ProductValue,
-)
-from components.abstract_domain import IntervalDomain, NonNullDomain
-
-
 # Add project root and components directory to path for imports
 PROJECT_ROOT = Path(__file__).parent.parent
+SOLUTIONS_DIR = Path(__file__).parent
 COMPONENTS_DIR = Path(__file__).parent / "components"
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+for p in [PROJECT_ROOT, SOLUTIONS_DIR, COMPONENTS_DIR]:
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
+
+# Import analysis modules (using relative imports from components dir)
+from solutions.components.bytecode_analysis import BytecodeAnalyzer, AnalysisResult as BytecodeResult  # noqa: E402
+from solutions.components.syntaxer import BloatFinder  # noqa: E402
+from solutions.components.syntaxer.utils import create_java_parser  # noqa: E402
+
+# Import abstract interpreter with all domains (using full path from project root)
+from solutions.components.abstract_interpreter import interval_unbounded_run, product_unbounded_run  # noqa: E402
 
 
 log = logging.getLogger(__name__)
@@ -793,11 +788,11 @@ class Debloater:
             if len(source_result.findings) > 5:
                 print(f"  ... and {len(source_result.findings) - 5} more")
         else:
-            print(f"\n📝 Source Analysis: No findings")
+            print("\n📝 Source Analysis: No findings")
         
         # Bytecode pipeline results
         if bytecode_result:
-            print(f"\n🔍 Bytecode Analysis:")
+            print("\n🔍 Bytecode Analysis:")
             print(f"  Unreachable methods: {len(bytecode_result.unreachable_methods)}")
             dead_count = bytecode_result.get_dead_instruction_count()
             total_count = bytecode_result.total_instructions
@@ -811,15 +806,15 @@ class Debloater:
             source_only = sum(1 for s in combined.suggestions if s.get('source') == 'source_analysis')
             bytecode_only = sum(1 for s in combined.suggestions if s.get('source') == 'bytecode_analysis')
             
-            print(f"\n✨ Combined Results:")
+            print("\n✨ Combined Results:")
             print(f"  Total suggestions: {len(combined.suggestions)}")
             print(f"  Lines with dead code: {combined.total_dead_lines}")
-            print(f"\n  By Confidence:")
+            print("\n  By Confidence:")
             print(f"    ✅ Verified by both: {both_count} (high confidence)")
             print(f"    📝 Source only: {source_only}")
             print(f"    🔍 Bytecode only: {bytecode_only}")
             
-            print(f"\n📋 Suggestions by Line:")
+            print("\n📋 Suggestions by Line:")
             for line in sorted(combined.by_line.keys())[:10]:  # Show first 10
                 suggestions = combined.by_line[line]
                 for sugg in suggestions:
@@ -918,7 +913,7 @@ class BatchDebloater:
         batch_result.total_files = len(files)
         
         print(f"\n{'='*70}")
-        print(f"BATCH DEBLOATING ANALYSIS")
+        print("BATCH DEBLOATING ANALYSIS")
         print(f"{'='*70}")
         print(f"Processing {len(files)} file(s)...\n")
         
@@ -972,23 +967,23 @@ class BatchDebloater:
         print("BATCH ANALYSIS SUMMARY")
         print(f"{'='*70}\n")
         
-        print(f"📊 Files Processed:")
+        print("📊 Files Processed:")
         print(f"  Total: {batch_result.total_files}")
         print(f"  ✓ Successful: {batch_result.successful_files}")
         print(f"  ✗ Failed: {batch_result.failed_files}")
         
-        print(f"\n🎯 Aggregate Results:")
+        print("\n🎯 Aggregate Results:")
         print(f"  Total dead lines across all files: {batch_result.total_dead_lines}")
         print(f"  ✅ Verified by both: {batch_result.total_verified}")
         print(f"  📝 Source only: {batch_result.total_source_only}")
         print(f"  🔍 Bytecode only: {batch_result.total_bytecode_only}")
         
-        print(f"\n📊 Bytecode Metrics:")
+        print("\n📊 Bytecode Metrics:")
         percentage = batch_result.get_debloat_percentage()
         print(f"  Dead instructions: {batch_result.total_dead_instructions} / {batch_result.total_instructions} ({percentage:.1f}%)")
         
         if batch_result.errors_by_file:
-            print(f"\n❌ Errors:")
+            print("\n❌ Errors:")
             for file, error in batch_result.errors_by_file.items():
                 print(f"  {Path(file).name}: {error}")
         

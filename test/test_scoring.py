@@ -4,7 +4,7 @@ These ensure students get consistent and accurate feedback from their analysis s
 """
 
 import pytest
-from jpamb import model, jvm
+from jpamb import model
 
 
 class TestPredictionParsing:

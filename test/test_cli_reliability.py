@@ -5,7 +5,6 @@ Tests error handling, timeouts, crashes, and edge cases.
 
 import pytest
 import tempfile
-import time
 from pathlib import Path
 from click.testing import CliRunner
 

@@ -1,7 +1,7 @@
 ┌ Case jpamb.cases.Simple.assertBoolean:(Z)V
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.assertBoolean:(Z)V'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -15,7 +15,7 @@
 ┌ Case jpamb.cases.Simple.assertFalse:()V
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.assertFalse:()V'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -29,7 +29,7 @@
 ┌ Case jpamb.cases.Simple.assertInteger:(I)V
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.assertInteger:(I)V'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -43,7 +43,7 @@
 ┌ Case jpamb.cases.Simple.assertPositive:(I)V
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.assertPositive:(I)V'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -57,7 +57,7 @@
 ┌ Case jpamb.cases.Simple.checkBeforeAssert:(I)V
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.checkBeforeAssert:(I)V'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -71,7 +71,7 @@
 ┌ Case jpamb.cases.Simple.checkBeforeDivideByN2:(I)I
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.checkBeforeDivideByN2:(I)I'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -85,7 +85,7 @@
 ┌ Case jpamb.cases.Simple.checkBeforeDivideByN:(I)I
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.checkBeforeDivideByN:(I)I'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -99,7 +99,7 @@
 ┌ Case jpamb.cases.Simple.divideByN:(I)I
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.divideByN:(I)I'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -113,7 +113,7 @@
 ┌ Case jpamb.cases.Simple.divideByNMinus10054203:(I)I
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.divideByNMinus10054203:(I)I'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -127,7 +127,7 @@
 ┌ Case jpamb.cases.Simple.divideByZero:()I
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.divideByZero:()I'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -141,7 +141,7 @@
 ┌ Case jpamb.cases.Simple.divideZeroByZero:(II)I
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.divideZeroByZero:(II)I'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -155,7 +155,7 @@
 ┌ Case jpamb.cases.Simple.earlyReturn:()I
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.earlyReturn:()I'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -169,7 +169,7 @@
 ┌ Case jpamb.cases.Simple.justAdd:(II)I
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.justAdd:(II)I'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -183,7 +183,7 @@
 ┌ Case jpamb.cases.Simple.justMulitply:(II)I
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.justMulitply:(II)I'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -197,7 +197,7 @@
 ┌ Case jpamb.cases.Simple.justReturn:()I
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.justReturn:()I'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -211,7 +211,7 @@
 ┌ Case jpamb.cases.Simple.justReturnNothing:()V
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.justReturnNothing:()V'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%
@@ -225,7 +225,7 @@
 ┌ Case jpamb.cases.Simple.multiError:(Z)I
 │┌ Run .venv/bin/python solutions/components/syntaxer.py 'jpamb.cases.Simple.multiError:(Z)I'
 ││┌ Stderr
-│││ DEBUG:__main__:parse sourcefile /Users/nicholasandersen/Desktop/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
+│││ DEBUG:__main__:parse sourcefile /Users/hsyuen720/projects/jpamb-debloating-group-21/src/main/java/jpamb/cases/Simple.java
 ││└ Stderr
 ││┌ Stdout
 │││ ok;50%

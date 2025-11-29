@@ -4,7 +4,6 @@ These test, check that the output of the tests remain the same.
 
 import pytest
 
-from glob import glob
 from pathlib import Path
 
 from click.testing import CliRunner

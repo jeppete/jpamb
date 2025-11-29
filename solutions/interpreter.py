@@ -1,7 +1,7 @@
 import jpamb
 from jpamb import jvm
 from dataclasses import dataclass
-from typing import Dict, List, Set, Optional, Union
+from typing import Dict, List, Set
 from enum import Enum
 
 import sys
@@ -172,6 +172,10 @@ def step(state: State) -> State | str:
                     result = v1.value - v2.value
                 case jvm.BinaryOpr.Mul:
                     result = v1.value * v2.value
+                case jvm.BinaryOpr.Rem:
+                    if v2.value == 0:
+                        return "divide by zero"
+                    result = v1.value % v2.value
                 case _:
                     raise NotImplementedError(f"Unsupported binary operator: {operant}")
             
@@ -345,7 +349,52 @@ def step(state: State) -> State | str:
             # Unconditional jump
             frame.pc = PC(frame.pc.method, target)
             return state
-        case jvm.Invoke(static=True, method=method_ref):
+        case jvm.Incr(index=idx, amount=amount):
+            # Increment local variable by constant
+            current_val = frame.locals.get(idx, jvm.Value.int(0))
+            new_val = jvm.Value.int(current_val.value + amount)
+            frame.locals[idx] = new_val
+            frame.pc += 1
+            return state
+        case jvm.TableSwitch(low=low, default=default, targets=targets):
+            # Table switch - lookup target based on index value
+            index_val = frame.stack.pop()
+            idx = index_val.value
+            if idx < low or idx >= low + len(targets):
+                # Out of range - go to default
+                frame.pc = PC(frame.pc.method, default)
+            else:
+                # In range - go to target
+                target_idx = idx - low
+                frame.pc = PC(frame.pc.method, targets[target_idx])
+            return state
+        case jvm.Cast(from_=from_type, to_=to_type):
+            # Type cast - for now just pass through the value
+            # The JVM handles narrowing conversions automatically
+            val = frame.stack.pop()
+            # For int narrowing (i2b, i2s, i2c), apply masking
+            if isinstance(from_type, jvm.Int):
+                if isinstance(to_type, jvm.Byte):
+                    # Truncate to byte range (-128 to 127)
+                    result = ((val.value + 128) % 256) - 128
+                    frame.stack.push(jvm.Value.int(result))
+                elif isinstance(to_type, jvm.Short):
+                    # Truncate to short range (-32768 to 32767)
+                    result = ((val.value + 32768) % 65536) - 32768
+                    frame.stack.push(jvm.Value.int(result))
+                elif isinstance(to_type, jvm.Char):
+                    # Truncate to char range (0 to 65535)
+                    result = val.value % 65536
+                    frame.stack.push(jvm.Value.int(result))
+                else:
+                    # Other casts - pass through
+                    frame.stack.push(val)
+            else:
+                # Non-int casts - pass through
+                frame.stack.push(val)
+            frame.pc += 1
+            return state
+        case jvm.InvokeStatic(method=method_ref):
             # Static method invocation - for simplicity, handle basic cases
             method_name = str(method_ref.extension)
             if "println" in method_name or "print" in method_name:
@@ -365,7 +414,7 @@ def step(state: State) -> State | str:
                 # Unknown static method - for testing, just continue
                 frame.pc += 1
                 return state
-        case jvm.Invoke(static=False, method=method_ref):
+        case jvm.InvokeVirtual(method=method_ref) | jvm.InvokeInterface(method=method_ref) | jvm.InvokeSpecial(method=method_ref):
             # Instance method invocation
             method_name = str(method_ref.extension)
             if "<init>" in method_name:

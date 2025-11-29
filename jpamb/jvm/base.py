@@ -139,16 +139,30 @@ class Type(ABC):
                     return Char()
                 case "short":
                     return Short()
+                case "byte":
+                    return Byte()
                 case "ref":
                     return Reference()
                 case "boolean":
                     return Boolean()
+                case "double":
+                    return Double()
+                case "float":
+                    return Float()
+                case "long":
+                    return Long()
+                case "class":
+                    # Class type (e.g., java.lang.Class) - treat as Reference
+                    return Reference()
         if "base" in json:
             return Type.from_json(json["base"])
         if "kind" in json:
             match json["kind"]:
                 case "array":
                     return Array(Type.from_json(json["type"]))
+                case "class":
+                    # Class reference - treat as Reference type
+                    return Reference()
                 case kind:
                     raise NotImplementedError(
                         f"Unknown kind {kind}, in Type.from_json: {json!r}"

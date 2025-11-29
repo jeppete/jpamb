@@ -14,7 +14,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 # Import from the local syntaxer package
-from components.syntaxer import BloatFinder, Issue  # noqa: E402
+from components.syntaxer import BloatFinder  # noqa: E402
 from components.syntaxer.utils import create_java_parser  # noqa: E402
 
 log = logging.getLogger(__name__)

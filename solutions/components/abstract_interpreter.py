@@ -6,12 +6,12 @@ from typing import Dict, Iterable, Tuple, TYPE_CHECKING
 import jpamb
 from jpamb import jvm
 
-from components.abstract_domain import (
+from solutions.components.abstract_domain import (
     SignSet, SignArithmetic,
     IntervalDomain, IntervalArithmetic,
     NonNullDomain,
 )
-from components.abstract_state import Bytecode, PC, PerVarFrame, Stack
+from solutions.components.abstract_state import Bytecode, PC, PerVarFrame, Stack
 from dataclasses import dataclass
 
 # Type hints for ISY module (avoid circular imports)
@@ -332,6 +332,29 @@ def astep(
             yield n.with_pc(nxt)
         return
 
+    # ---------- PUT (fields) ----------
+    if tname == "Put":
+        n = frame.copy()
+        static = bool(getattr(op, "static", False))
+
+        # Pop the value to store
+        if n.stack:
+            _val = n.stack.pop()
+
+        # Instance fields: pop receiver (may be null).
+        if not static:
+            if not n.stack:
+                n.stack.push(SignSet.top())
+            # Receiver might be null, we cannot track nullness in this
+            # domain so we always consider the NPE possible
+            yield "null pointer"
+            _recv = n.stack.pop()
+
+        nxt = bc.next_pc(pc)
+        if nxt is not None:
+            yield n.with_pc(nxt)
+        return
+
     # ---------- ARRAYS (coarse) ----------
     if tname == "NewArray":
         n = frame.copy()
@@ -421,7 +444,7 @@ def astep(
             yield "null pointer"
 
         # Push abstract return value if any.
-        if returns is not None and isinstance(returns, jvm.Int):
+        if returns is not None:
             n.stack.push(SignSet.top())
 
         nxt = bc.next_pc(pc)
@@ -1366,6 +1389,27 @@ def interval_astep(
             yield n.with_pc(nxt)
         return
 
+    # ---------- PUT (fields) ----------
+    if tname == "Put":
+        n = frame.copy()
+        static = bool(getattr(op, "static", False))
+
+        # Pop the value to store
+        if n.stack:
+            _val = n.stack.pop()
+
+        # Instance fields: pop receiver (may be null).
+        if not static:
+            if not n.stack:
+                n.stack.push(IntervalDomain.top())
+            yield "null pointer"
+            _recv = n.stack.pop()
+
+        nxt = bc.next_pc(pc)
+        if nxt is not None:
+            yield n.with_pc(nxt)
+        return
+
     # ---------- ARRAYS ----------
     if tname == "NewArray":
         n = frame.copy()
@@ -1448,7 +1492,7 @@ def interval_astep(
         if not is_static:
             yield "null pointer"
 
-        if returns is not None and isinstance(returns, jvm.Int):
+        if returns is not None:
             n.stack.push(IntervalDomain.top())
 
         nxt = bc.next_pc(pc)
@@ -2000,6 +2044,30 @@ def product_astep(
             yield n.with_pc(nxt)
         return
 
+    # ---------- PUT (fields) ----------
+    if tname == "Put":
+        n = frame.copy()
+        static = bool(getattr(op, "static", False))
+
+        # Pop the value to store
+        if n.stack:
+            _val = n.stack.pop()
+
+        # Instance fields: pop receiver (may be null).
+        if not static:
+            if not n.stack:
+                n.stack.push(ProductValue.top())
+            recv = n.stack.pop()
+            
+            # If receiver is definitely non-null, no NPE
+            if not recv.nullness.is_definitely_non_null():
+                yield "null pointer"
+
+        nxt = bc.next_pc(pc)
+        if nxt is not None:
+            yield n.with_pc(nxt)
+        return
+
     # ---------- NEW - produces definitely non-null reference ----------
     if tname == "New":
         n = frame.copy()
@@ -2108,7 +2176,7 @@ def product_astep(
             if not receiver.nullness.is_definitely_non_null():
                 yield "null pointer"
 
-        if returns is not None and isinstance(returns, jvm.Int):
+        if returns is not None:
             n.stack.push(ProductValue.top())
 
         nxt = bc.next_pc(pc)

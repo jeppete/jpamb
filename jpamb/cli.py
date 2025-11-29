@@ -1040,5 +1040,65 @@ def plot(ctx, report, directory):
         plot_scores(scores, times, labels, classes)
 
 
+@cli.command()
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed output for each method")
+@click.option("--method", "-m", default=None, help="Analyze specific method (partial match)")
+@click.option("--list", "list_methods", is_flag=True, help="List available methods")
+@click.pass_context
+def pipeline(ctx, verbose, method, list_methods):
+    """Run the complete fine-grained debloating pipeline.
+    
+    This connects all features: IIN → ISY → NAN → IAI+IBA+NAB → NCR
+    
+    Traces are always regenerated before analysis.
+    
+    Examples:
+        uv run jpamb pipeline                    # Run on all methods
+        uv run jpamb pipeline -m assertPositive # Run on specific method
+        uv run jpamb pipeline --list            # List available methods
+    """
+    import sys
+    from pathlib import Path
+    
+    # Add solutions directory to path
+    project_root = Path(__file__).parent.parent
+    sys.path.insert(0, str(project_root))
+    
+    from solutions.pipeline_evaluation import (
+        run_pipeline, 
+        run_pipeline_all, 
+        list_available_methods
+    )
+    
+    if list_methods:
+        print("Available methods with traces:")
+        for m in list_available_methods():
+            print(f"  {m}")
+        return
+    
+    if method:
+        # Find matching method
+        methods = list_available_methods()
+        if ":" in method:
+            method_id = method
+        else:
+            matches = [m for m in methods if method.lower() in m.lower()]
+            if len(matches) == 1:
+                method_id = matches[0]
+            elif len(matches) > 1:
+                print(f"Multiple matches for '{method}':")
+                for m in matches:
+                    print(f"  {m}")
+                return
+            else:
+                print(f"No method found matching '{method}'")
+                print("Use --list to see available methods")
+                return
+        
+        run_pipeline(method_id, verbose=True)
+    else:
+        run_pipeline_all(verbose=verbose)
+
+
 if __name__ == "__main__":
     cli()

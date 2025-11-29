@@ -1,10 +1,8 @@
 import pytest
 import json
-import os
 import sys
 from pathlib import Path
 import tempfile
-import shutil
 
 # Add solutions to path so we can import interpreter
 sys.path.insert(0, str(Path(__file__).parent.parent / "solutions"))

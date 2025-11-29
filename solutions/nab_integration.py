@@ -1,22 +1,22 @@
 """
-NAB Integration Module - Integrates IIN traces with IAB abstract domains.
+NAB Integration Module - Integrates IIN traces with abstract domains.
 
 This module provides the core integration between dynamic execution traces
-produced by IIN (Interpreter) and the abstract domains defined in IAB
-(Abstractions). It implements the dynamic refinement heuristic that uses
+produced by IIN (Interpreter) and the abstract domains defined for static
+analysis. It implements the dynamic refinement heuristic that uses
 observed concrete values to set initial abstract states for static analysis.
 
 **Course Definition (02242):**
 "Run two or more abstractions at the same time, letting them inform each other
 during execution" (formula: 5 per abstraction after the first).
 
-This module implements a **Reduced Product** of SignDomain and IntervalDomain,
+This module implements a **Reduced Product** of SignSet and IntervalDomain,
 where both abstractions run in parallel and mutually refine each other:
-- Sign POSITIVE tightens interval low bound to max(low, 1)
-- Sign NEGATIVE tightens interval high bound to min(high, -1)
-- Sign ZERO constrains interval to [0, 0]
-- Interval [a, b] where a > 0 refines sign to POSITIVE
-- Interval [a, b] where b < 0 refines sign to NEGATIVE
+- Sign "+" tightens interval low bound to max(low, 1)
+- Sign "-" tightens interval high bound to min(high, -1)
+- Sign "0" constrains interval to [0, 0]
+- Interval [a, b] where a > 0 refines sign to "+"
+- Interval [a, b] where b < 0 refines sign to "-"
 - etc.
 
 DTU 02242 Program Analysis - Group 21
@@ -24,24 +24,91 @@ DTU 02242 Program Analysis - Group 21
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Union, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
-from copy import deepcopy
 
-# Import from existing IAB module
-from solutions.abstractions import (
-    SignDomain, 
-    SignValue,
-    IntervalDomain, 
+# Import from abstract_domain module
+from solutions.components.abstract_domain import (
+    SignSet,
+    IntervalDomain,
     IntervalValue,
-    DomainRefinement
+    NonNullDomain,
 )
+
+
+# --- Helper functions for SignSet sign categories ---
+
+def signset_is_positive(s: SignSet) -> bool:
+    """Check if SignSet represents strictly positive values."""
+    return s.signs == frozenset({"+"})
+
+def signset_is_negative(s: SignSet) -> bool:
+    """Check if SignSet represents strictly negative values."""
+    return s.signs == frozenset({"-"})
+
+def signset_is_zero(s: SignSet) -> bool:
+    """Check if SignSet represents exactly zero."""
+    return s.signs == frozenset({"0"})
+
+def signset_is_non_negative(s: SignSet) -> bool:
+    """Check if SignSet represents non-negative values (>= 0)."""
+    return s.signs == frozenset({"+", "0"})
+
+def signset_is_non_positive(s: SignSet) -> bool:
+    """Check if SignSet represents non-positive values (<= 0)."""
+    return s.signs == frozenset({"-", "0"})
+
+def signset_is_non_zero(s: SignSet) -> bool:
+    """Check if SignSet represents non-zero values."""
+    return s.signs == frozenset({"+", "-"})
+
+
+# --- Named SignSet constructors for clarity ---
+
+def sign_positive() -> SignSet:
+    """Create SignSet for strictly positive values."""
+    return SignSet(frozenset({"+"}) )
+
+def sign_negative() -> SignSet:
+    """Create SignSet for strictly negative values."""
+    return SignSet(frozenset({"-"}))
+
+def sign_zero() -> SignSet:
+    """Create SignSet for exactly zero."""
+    return SignSet(frozenset({"0"}))
+
+def sign_non_negative() -> SignSet:
+    """Create SignSet for non-negative values (>= 0)."""
+    return SignSet(frozenset({"+", "0"}))
+
+def sign_non_positive() -> SignSet:
+    """Create SignSet for non-positive values (<= 0)."""
+    return SignSet(frozenset({"-", "0"}))
+
+def sign_non_zero() -> SignSet:
+    """Create SignSet for non-zero values."""
+    return SignSet(frozenset({"+", "-"}))
+
+
+def signset_from_samples(samples: List[int]) -> SignSet:
+    """
+    Create SignSet from concrete sample values.
+    
+    Args:
+        samples: List of concrete integer values
+        
+    Returns:
+        SignSet representing the signs observed in samples
+    """
+    if not samples:
+        return SignSet.bottom()
+    return SignSet.abstract(samples)
 
 
 @dataclass
 class AbstractValue:
     """Combined abstract value with both sign and interval domains."""
-    sign: SignDomain
+    sign: SignSet
     interval: IntervalDomain
     local_index: int
     
@@ -56,7 +123,6 @@ class AbstractValue:
         return {
             "local_index": self.local_index,
             "sign": str(self.sign),
-            "sign_value": self.sign.value.name,
             "interval": str(self.interval),
             "interval_bounds": {
                 "low": self.interval.value.low,
@@ -68,25 +134,35 @@ class AbstractValue:
 @dataclass
 class ReducedProductState:
     """
-    Reduced Product of SignDomain and IntervalDomain.
+    Reduced Product of SignSet, IntervalDomain, and NonNullDomain.
     
     This implements the course definition for NAB (Integrate Abstractions):
     "Run two or more abstractions at the same time, letting them inform each other
     during execution" (formula: 5 per abstraction after the first).
     
-    The reduced product maintains both sign and interval abstractions in parallel,
-    with mutual refinement to tighten both domains using information from each other.
+    The reduced product maintains sign, interval, AND nonnull abstractions in parallel,
+    with mutual refinement to tighten all domains using information from each other.
+    
+    The NonNullDomain is a NOVEL abstraction NOT taught in DTU 02242 lectures
+    (Sign, Interval, Constant, Parity are taught), qualifying for IAB points.
     
     Key refinement rules:
-    - sign=POSITIVE + interval=[a,b] → interval=[max(a,1), b]
-    - sign=NEGATIVE + interval=[a,b] → interval=[a, min(b,-1)]
-    - sign=ZERO + interval=[a,b] → interval=[0,0]
-    - interval=[a,b] where a>0 → sign=POSITIVE
-    - interval=[a,b] where b<0 → sign=NEGATIVE
-    - interval=[0,0] → sign=ZERO
+    - sign={+} + interval=[a,b] → interval=[max(a,1), b]
+    - sign={-} + interval=[a,b] → interval=[a, min(b,-1)]
+    - sign={0} + interval=[a,b] → interval=[0,0]
+    - interval=[a,b] where a>0 → sign={+}
+    - interval=[a,b] where b<0 → sign={-}
+    - interval=[0,0] → sign={0}
+    - nonnull=DEFINITELY_NON_NULL + is_reference → array length ≥ 0
+    
+    Dead Code Detection (IAB):
+    - If nonnull=DEFINITELY_NON_NULL, ifnull branch is DEAD (unreachable)
+    - If nonnull=MAYBE_NULL at ifnonnull, both branches are possible
     """
-    sign: SignDomain
+    sign: SignSet
     interval: IntervalDomain
+    nonnull: NonNullDomain = field(default_factory=NonNullDomain.top)
+    is_reference: bool = False  # True if tracking a reference, False for primitives
     _refinement_history: List[str] = field(default_factory=list)
     
     def __post_init__(self):
@@ -97,7 +173,7 @@ class ReducedProductState:
     @classmethod
     def from_samples(cls, samples: List[int]) -> 'ReducedProductState':
         """
-        Create a reduced product state from concrete samples.
+        Create a reduced product state from concrete samples (for integers).
         
         Args:
             samples: List of concrete integer values
@@ -105,17 +181,135 @@ class ReducedProductState:
         Returns:
             ReducedProductState with mutually refined sign and interval
         """
-        sign_domain, interval_domain = DomainRefinement.from_concrete_values(samples)
-        state = cls(sign=sign_domain, interval=interval_domain, _refinement_history=[])
+        sign = signset_from_samples(samples)
+        interval = IntervalDomain.abstract(samples)
+        state = cls(
+            sign=sign,
+            interval=interval,
+            nonnull=NonNullDomain.top(),  # N/A for integers
+            is_reference=False,
+            _refinement_history=[]
+        )
         state.inform_each_other()
         return state
     
     @classmethod
-    def top(cls) -> 'ReducedProductState':
+    def for_integer(cls, samples: Optional[List[int]] = None) -> 'ReducedProductState':
+        """
+        Create state for an integer value (not a reference).
+        
+        For primitives, nonnull is not applicable (use TOP).
+        """
+        if samples:
+            sign = signset_from_samples(samples)
+            interval = IntervalDomain.abstract(samples)
+        else:
+            sign = SignSet.top()
+            interval = IntervalDomain.top()
+        
+        state = cls(
+            sign=sign,
+            interval=interval,
+            nonnull=NonNullDomain.top(),
+            is_reference=False,
+            _refinement_history=[]
+        )
+        state.inform_each_other()
+        return state
+    
+    @classmethod
+    def for_reference(
+        cls,
+        nonnull: Optional[NonNullDomain] = None,
+        is_array: bool = False,
+        length_samples: Optional[List[int]] = None
+    ) -> 'ReducedProductState':
+        """
+        Create state for a reference value.
+        
+        Args:
+            nonnull: Nullness status (default: TOP)
+            is_array: True if this is an array reference
+            length_samples: If array, concrete length samples for interval
+        """
+        if nonnull is None:
+            nonnull = NonNullDomain.top()
+        
+        if is_array and length_samples:
+            sign = signset_from_samples(length_samples)
+            interval = IntervalDomain.abstract(length_samples)
+        else:
+            # Array lengths are non-negative
+            sign = sign_non_negative() if is_array else SignSet.top()
+            interval = IntervalDomain.range(0, None) if is_array else IntervalDomain.top()
+        
+        state = cls(
+            sign=sign,
+            interval=interval,
+            nonnull=nonnull,
+            is_reference=True,
+            _refinement_history=[]
+        )
+        state.inform_each_other()
+        return state
+    
+    @classmethod
+    def from_new(cls) -> 'ReducedProductState':
+        """
+        Create state for result of 'new' instruction.
+        
+        A newly created object is DEFINITELY_NON_NULL.
+        """
+        return cls(
+            sign=SignSet.top(),
+            interval=IntervalDomain.top(),
+            nonnull=NonNullDomain.definitely_non_null(),
+            is_reference=True,
+            _refinement_history=["new → DEFINITELY_NON_NULL"]
+        )
+    
+    @classmethod
+    def from_newarray(cls, length: Optional[SignSet] = None) -> 'ReducedProductState':
+        """
+        Create state for result of 'newarray' or 'anewarray' instruction.
+        
+        A newly created array is DEFINITELY_NON_NULL, and length is non-negative.
+        """
+        # Array lengths are always non-negative
+        interval = IntervalDomain.range(0, None)
+        sign = sign_non_negative()
+        
+        return cls(
+            sign=sign,
+            interval=interval,
+            nonnull=NonNullDomain.definitely_non_null(),
+            is_reference=True,
+            _refinement_history=["newarray → DEFINITELY_NON_NULL, length≥0"]
+        )
+    
+    @classmethod
+    def from_null(cls) -> 'ReducedProductState':
+        """
+        Create state for 'aconst_null' instruction.
+        
+        The null constant is MAYBE_NULL (includes definitely null).
+        """
+        return cls(
+            sign=SignSet.top(),
+            interval=IntervalDomain.top(),
+            nonnull=NonNullDomain.maybe_null(),
+            is_reference=True,
+            _refinement_history=["aconst_null → MAYBE_NULL"]
+        )
+    
+    @classmethod
+    def top(cls, is_reference: bool = False) -> 'ReducedProductState':
         """Create TOP state (no information)."""
         return cls(
-            sign=SignDomain(SignValue.TOP),
-            interval=IntervalDomain(IntervalValue(None, None)),
+            sign=SignSet.top(),
+            interval=IntervalDomain.top(),
+            nonnull=NonNullDomain.top(),
+            is_reference=is_reference,
             _refinement_history=[]
         )
     
@@ -123,25 +317,36 @@ class ReducedProductState:
     def bottom(cls) -> 'ReducedProductState':
         """Create BOTTOM state (unreachable)."""
         return cls(
-            sign=SignDomain(SignValue.BOTTOM),
-            interval=IntervalDomain(IntervalDomain.BOTTOM),
+            sign=SignSet.bottom(),
+            interval=IntervalDomain.bottom(),
+            nonnull=NonNullDomain.bottom(),
+            is_reference=False,
             _refinement_history=[]
         )
     
     def is_bottom(self) -> bool:
-        """Check if either component is bottom."""
-        return self.sign.is_bottom() or self.interval.is_bottom()
+        """Check if any component is bottom."""
+        return (self.sign.is_bottom() or 
+                self.interval.is_bottom() or 
+                self.nonnull.is_bottom())
     
     def is_top(self) -> bool:
-        """Check if both components are top."""
-        return self.sign.is_top() and self.interval.is_top()
+        """Check if all components are top."""
+        return (self.sign.is_top() and 
+                self.interval.is_top() and 
+                self.nonnull.is_top())
     
     def inform_each_other(self) -> bool:
         """
-        Core NAB operation: Mutual refinement between sign and interval.
+        Core NAB operation: Mutual refinement between all three domains.
         
         This is the key integration method that implements the course definition:
         "Run two or more abstractions at the same time, letting them inform each other"
+        
+        Includes NonNull refinement for IAB (Novel Abstractions):
+        - Sign ↔ Interval (as before)
+        - NonNull → Interval: if DEFINITELY_NON_NULL array, length ≥ 0
+        - NonNull → Sign: if DEFINITELY_NON_NULL array, sign ∈ {+, 0}
         
         Returns:
             True if any refinement occurred, False if fixed point reached
@@ -164,11 +369,17 @@ class ReducedProductState:
             if sign_changed:
                 changed = True
             
+            # Refine from NonNull information (IAB)
+            nonnull_changed = self._refine_from_nonnull()
+            if nonnull_changed:
+                changed = True
+            
             # Check for inconsistency (bottom)
             if self._check_inconsistency():
-                self.sign = SignDomain(SignValue.BOTTOM)
-                self.interval = IntervalDomain(IntervalDomain.BOTTOM)
-                self._refinement_history.append("inconsistency detected -> BOTTOM")
+                self.sign = SignSet.bottom()
+                self.interval = IntervalDomain.bottom()
+                self.nonnull = NonNullDomain.bottom()
+                self._refinement_history.append("inconsistency detected → BOTTOM")
                 return True
         
         return iterations > 1
@@ -178,12 +389,11 @@ class ReducedProductState:
         Refine interval bounds using sign information.
         
         Rules:
-        - POSITIVE → low = max(low, 1)
-        - NEGATIVE → high = min(high, -1)
-        - ZERO → [0, 0]
-        - NON_NEGATIVE → low = max(low, 0)
-        - NON_POSITIVE → high = min(high, 0)
-        - NON_ZERO → exclude 0 if point interval
+        - {+} → low = max(low, 1)
+        - {-} → high = min(high, -1)
+        - {0} → [0, 0]
+        - {+,0} → low = max(low, 0)
+        - {-,0} → high = min(high, 0)
         """
         if self.sign.is_bottom() or self.interval.is_bottom():
             return False
@@ -193,43 +403,43 @@ class ReducedProductState:
         new_low = old_low
         new_high = old_high
         
-        sign_val = self.sign.value
+        signs = self.sign.signs
         
-        if sign_val == SignValue.POSITIVE:
+        if signs == frozenset({"+"}) :
             # Positive values must be >= 1
             if new_low is None or new_low < 1:
                 new_low = 1
-                self._refinement_history.append("sign=POSITIVE → low=max(low,1)")
+                self._refinement_history.append("sign={+} → low=max(low,1)")
         
-        elif sign_val == SignValue.NEGATIVE:
+        elif signs == frozenset({"-"}):
             # Negative values must be <= -1
             if new_high is None or new_high > -1:
                 new_high = -1
-                self._refinement_history.append("sign=NEGATIVE → high=min(high,-1)")
+                self._refinement_history.append("sign={-} → high=min(high,-1)")
         
-        elif sign_val == SignValue.ZERO:
+        elif signs == frozenset({"0"}):
             # Zero constraint
             new_low = 0
             new_high = 0
-            self._refinement_history.append("sign=ZERO → interval=[0,0]")
+            self._refinement_history.append("sign={0} → interval=[0,0]")
         
-        elif sign_val == SignValue.NON_NEGATIVE:
+        elif signs == frozenset({"+", "0"}):
             # Non-negative values must be >= 0
             if new_low is None or new_low < 0:
                 new_low = 0
-                self._refinement_history.append("sign=NON_NEGATIVE → low=max(low,0)")
+                self._refinement_history.append("sign={+,0} → low=max(low,0)")
         
-        elif sign_val == SignValue.NON_POSITIVE:
+        elif signs == frozenset({"-", "0"}):
             # Non-positive values must be <= 0
             if new_high is None or new_high > 0:
                 new_high = 0
-                self._refinement_history.append("sign=NON_POSITIVE → high=min(high,0)")
+                self._refinement_history.append("sign={-,0} → high=min(high,0)")
         
         # Check if changed
         if new_low != old_low or new_high != old_high:
             # Check for inconsistency (low > high means empty interval = BOTTOM)
             if (new_low is not None and new_high is not None and new_low > new_high):
-                self.interval = IntervalDomain(IntervalDomain.BOTTOM)
+                self.interval = IntervalDomain.bottom()
                 self._refinement_history.append("inconsistency: low > high → BOTTOM")
             else:
                 self.interval = IntervalDomain(IntervalValue(new_low, new_high))
@@ -242,17 +452,16 @@ class ReducedProductState:
         Refine sign using interval information.
         
         Rules:
-        - [a, b] where a > 0 → POSITIVE
-        - [a, b] where b < 0 → NEGATIVE
-        - [0, 0] → ZERO
-        - [0, b] where b > 0 → NON_NEGATIVE
-        - [a, 0] where a < 0 → NON_POSITIVE
-        - [a, b] where a < 0 < b → meet with current
+        - [a, b] where a > 0 → {+}
+        - [a, b] where b < 0 → {-}
+        - [0, 0] → {0}
+        - [0, b] where b > 0 → {+,0}
+        - [a, 0] where a < 0 → {-,0}
         """
         if self.sign.is_bottom() or self.interval.is_bottom():
             return False
         
-        old_sign = self.sign.value
+        old_signs = self.sign.signs
         low = self.interval.value.low
         high = self.interval.value.high
         
@@ -260,38 +469,72 @@ class ReducedProductState:
         
         # Infer sign from interval
         if low is not None and low > 0:
-            inferred_sign = SignValue.POSITIVE
-            self._refinement_history.append(f"interval.low={low}>0 → sign=POSITIVE")
+            inferred_sign = sign_positive()
+            self._refinement_history.append(f"interval.low={low}>0 → sign={{+}}")
         elif high is not None and high < 0:
-            inferred_sign = SignValue.NEGATIVE
-            self._refinement_history.append(f"interval.high={high}<0 → sign=NEGATIVE")
+            inferred_sign = sign_negative()
+            self._refinement_history.append(f"interval.high={high}<0 → sign={{-}}")
         elif low == 0 and high == 0:
-            inferred_sign = SignValue.ZERO
-            self._refinement_history.append("interval=[0,0] → sign=ZERO")
+            inferred_sign = sign_zero()
+            self._refinement_history.append("interval=[0,0] → sign={0}")
         elif low is not None and low == 0 and (high is None or high > 0):
-            inferred_sign = SignValue.NON_NEGATIVE
-            self._refinement_history.append("interval.low=0 → sign=NON_NEGATIVE")
+            inferred_sign = sign_non_negative()
+            self._refinement_history.append("interval.low=0 → sign={+,0}")
         elif high is not None and high == 0 and (low is None or low < 0):
-            inferred_sign = SignValue.NON_POSITIVE
-            self._refinement_history.append("interval.high=0 → sign=NON_POSITIVE")
+            inferred_sign = sign_non_positive()
+            self._refinement_history.append("interval.high=0 → sign={-,0}")
         elif low is not None and high is not None and low < 0 and high > 0:
-            # Crosses zero - could be anything non-zero or include zero
-            if low < 0 and high > 0:
-                # Full range including zero
-                inferred_sign = SignValue.TOP
+            # Crosses zero - could be anything (TOP)
+            inferred_sign = SignSet.top()
         
         if inferred_sign is not None:
-            # Meet with current sign for precision
-            new_sign_domain = self.sign.meet(SignDomain(inferred_sign))
-            if new_sign_domain.value != old_sign:
-                self.sign = new_sign_domain
+            # Meet with current sign for precision (intersection)
+            new_sign = self.sign & inferred_sign
+            if new_sign.signs != old_signs:
+                self.sign = new_sign
                 return True
         
         return False
     
+    def _refine_from_nonnull(self) -> bool:
+        """
+        Refine sign/interval using NonNull information.
+        
+        Key insight: For arrays that are DEFINITELY_NON_NULL,
+        the length (tracked in interval) is meaningful and non-negative.
+        
+        This is part of the IAB (Novel Abstractions) contribution.
+        """
+        if not self.is_reference:
+            return False
+        
+        if self.nonnull.is_bottom():
+            return False
+        
+        changed = False
+        
+        # If reference is DEFINITELY_NON_NULL, we can trust array length bounds
+        if self.nonnull.is_definitely_non_null():
+            # Array lengths are always >= 0
+            low = self.interval.value.low
+            if low is None or low < 0:
+                self.interval = IntervalDomain(IntervalValue(0, self.interval.value.high))
+                self._refinement_history.append("nonnull=NON_NULL → length≥0")
+                changed = True
+            
+            # Sign should exclude negative for array length
+            if "-" in self.sign.signs:
+                new_signs = self.sign.signs - {"-"}
+                if new_signs:
+                    self.sign = SignSet(frozenset(new_signs))
+                    self._refinement_history.append("nonnull=NON_NULL → sign excludes {-}")
+                    changed = True
+        
+        return changed
+    
     def _check_inconsistency(self) -> bool:
-        """Check if sign and interval are inconsistent."""
-        if self.interval.is_bottom():
+        """Check if domains are inconsistent."""
+        if self.interval.is_bottom() or self.sign.is_bottom():
             return True
         
         low = self.interval.value.low
@@ -302,27 +545,129 @@ class ReducedProductState:
             return True
         
         # Check sign/interval consistency
-        sign_val = self.sign.value
+        signs = self.sign.signs
         
-        if sign_val == SignValue.POSITIVE:
+        if signs == frozenset({"+"}):
             if high is not None and high <= 0:
                 return True
-        elif sign_val == SignValue.NEGATIVE:
+        elif signs == frozenset({"-"}):
             if low is not None and low >= 0:
                 return True
-        elif sign_val == SignValue.ZERO:
+        elif signs == frozenset({"0"}):
             if (low is not None and low > 0) or (high is not None and high < 0):
                 return True
         
         return False
     
+    # --- Branch refinement for null checks (IAB) ---
+    
+    def refine_ifnull_true(self) -> 'ReducedProductState':
+        """
+        Refine when ifnull branch is taken (value IS null).
+        
+        Returns new state where nonnull is refined to MAYBE_NULL.
+        """
+        new_nonnull = self.nonnull.refine_ifnull_true()
+        return ReducedProductState(
+            sign=self.sign,
+            interval=self.interval,
+            nonnull=new_nonnull,
+            is_reference=self.is_reference,
+            _refinement_history=self._refinement_history + ["ifnull taken → MAYBE_NULL"]
+        )
+    
+    def refine_ifnull_false(self) -> 'ReducedProductState':
+        """
+        Refine when ifnull branch is NOT taken (value is NOT null).
+        
+        Returns new state where nonnull is refined to DEFINITELY_NON_NULL.
+        """
+        new_nonnull = self.nonnull.refine_ifnull_false()
+        return ReducedProductState(
+            sign=self.sign,
+            interval=self.interval,
+            nonnull=new_nonnull,
+            is_reference=self.is_reference,
+            _refinement_history=self._refinement_history + ["ifnull not taken → NON_NULL"]
+        )
+    
+    def refine_ifnonnull_true(self) -> 'ReducedProductState':
+        """
+        Refine when ifnonnull branch is taken (value is NOT null).
+        
+        Returns new state where nonnull is refined to DEFINITELY_NON_NULL.
+        """
+        new_nonnull = self.nonnull.refine_ifnonnull_true()
+        return ReducedProductState(
+            sign=self.sign,
+            interval=self.interval,
+            nonnull=new_nonnull,
+            is_reference=self.is_reference,
+            _refinement_history=self._refinement_history + ["ifnonnull taken → NON_NULL"]
+        )
+    
+    def refine_ifnonnull_false(self) -> 'ReducedProductState':
+        """
+        Refine when ifnonnull branch is NOT taken (value IS null).
+        
+        Returns new state where nonnull is refined to MAYBE_NULL.
+        """
+        new_nonnull = self.nonnull.refine_ifnonnull_false()
+        return ReducedProductState(
+            sign=self.sign,
+            interval=self.interval,
+            nonnull=new_nonnull,
+            is_reference=self.is_reference,
+            _refinement_history=self._refinement_history + ["ifnonnull not taken → MAYBE_NULL"]
+        )
+    
+    # --- Dead code detection (IAB) ---
+    
+    def ifnull_branch_is_dead(self) -> bool:
+        """
+        Returns True if ifnull branch is proven dead (unreachable).
+        
+        This is the key IAB contribution: if reference is DEFINITELY_NON_NULL,
+        the ifnull branch can never be taken → dead code.
+        """
+        return self.nonnull.ifnull_definitely_false()
+    
+    def ifnonnull_fallthrough_is_dead(self) -> bool:
+        """
+        Returns True if ifnonnull fallthrough is proven dead.
+        
+        If reference is DEFINITELY_NON_NULL, ifnonnull always jumps.
+        """
+        return self.nonnull.ifnonnull_definitely_true()
+    
+    def may_throw_npe(self) -> bool:
+        """
+        Returns True if NullPointerException is possible.
+        
+        Used to determine if getfield/invokevirtual/arraylength may throw.
+        """
+        if not self.is_reference:
+            return False
+        return self.nonnull.may_be_null()
+    
+    # --- Lattice operations ---
+    
     def join(self, other: 'ReducedProductState') -> 'ReducedProductState':
         """
         Join (least upper bound) of two reduced product states.
         """
-        new_sign = self.sign.join(other.sign)
-        new_interval = self.interval.join(other.interval)
-        result = ReducedProductState(sign=new_sign, interval=new_interval)
+        new_sign = self.sign | other.sign
+        new_interval = self.interval | other.interval
+        new_nonnull = self.nonnull | other.nonnull
+        new_is_ref = self.is_reference or other.is_reference
+        
+        result = ReducedProductState(
+            sign=new_sign,
+            interval=new_interval,
+            nonnull=new_nonnull,
+            is_reference=new_is_ref,
+            _refinement_history=[]
+        )
         result.inform_each_other()
         return result
     
@@ -330,20 +675,98 @@ class ReducedProductState:
         """
         Meet (greatest lower bound) of two reduced product states.
         """
-        new_sign = self.sign.meet(other.sign)
-        new_interval = self.interval.meet(other.interval)
-        result = ReducedProductState(sign=new_sign, interval=new_interval)
+        new_sign = self.sign & other.sign
+        new_interval = self.interval & other.interval
+        new_nonnull = self.nonnull & other.nonnull
+        new_is_ref = self.is_reference and other.is_reference
+        
+        result = ReducedProductState(
+            sign=new_sign,
+            interval=new_interval,
+            nonnull=new_nonnull,
+            is_reference=new_is_ref,
+            _refinement_history=[]
+        )
         result.inform_each_other()
         return result
     
     def widening(self, other: 'ReducedProductState') -> 'ReducedProductState':
         """
-        Widening for fixpoint computation.
+        Widening operator for fixpoint computation.
+        
+        IBA (Implement Unbounded Static Analysis) - 7 points
+        
+        Applies widening to each component of the reduced product:
+        - SignSet: widening is just join (finite lattice, always terminates)
+        - IntervalDomain: classic interval widening (unstable → ±∞)
+        - NonNullDomain: widening is just join (finite lattice, bool here)
+        
+        Note: We do NOT apply mutual refinement after widening to ensure
+        monotonic convergence toward the fixpoint.
+        
+        Args:
+            other: The new state from the current iteration
+            
+        Returns:
+            Widened state that guarantees termination
         """
-        new_sign = self.sign.widening(other.sign)
+        new_sign = self.sign | other.sign  # SignSet widening is just join
         new_interval = self.interval.widening(other.interval)
-        result = ReducedProductState(sign=new_sign, interval=new_interval)
+        # nonnull is a bool - join is OR (keeps True if either is True)
+        new_nonnull = self.nonnull or other.nonnull
+        new_is_ref = self.is_reference or other.is_reference
+        
+        return ReducedProductState(
+            sign=new_sign,
+            interval=new_interval,
+            nonnull=new_nonnull,
+            is_reference=new_is_ref,
+            _refinement_history=[]
+        )
         # Don't refine after widening to ensure termination
+    
+    def narrowing(self, other: 'ReducedProductState') -> 'ReducedProductState':
+        """
+        Narrowing operator for improving precision after widening fixpoint.
+        
+        IBA (Implement Unbounded Static Analysis) - 7 points
+        
+        After widening reaches a fixpoint (possibly with ±∞ bounds), narrowing
+        can recover some precision by replacing infinite bounds with finite ones.
+        
+        Applies narrowing to each component:
+        - SignSet: no narrowing needed (finite lattice)
+        - IntervalDomain: replace ±∞ with finite bounds from other
+        - NonNullDomain: no narrowing needed (bool, use AND for meet)
+        
+        Note: We DO apply mutual refinement after narrowing to maximize precision.
+        
+        Args:
+            other: The state from the narrowing iteration
+            
+        Returns:
+            Narrowed state with improved precision
+        """
+        # SignSet: use meet for narrowing (can only get more precise)
+        new_sign = self.sign & other.sign
+        
+        # IntervalDomain: use dedicated narrowing operator
+        new_interval = self.interval.narrowing(other.interval)
+        
+        # NonNullDomain: nonnull is a bool, meet is AND
+        new_nonnull = self.nonnull and other.nonnull
+        
+        new_is_ref = self.is_reference and other.is_reference
+        
+        result = ReducedProductState(
+            sign=new_sign,
+            interval=new_interval,
+            nonnull=new_nonnull,
+            is_reference=new_is_ref,
+            _refinement_history=["narrowing applied"]
+        )
+        # Apply mutual refinement after narrowing for maximum precision
+        result.inform_each_other()
         return result
     
     def get_refinement_history(self) -> List[str]:
@@ -351,10 +774,23 @@ class ReducedProductState:
         return list(self._refinement_history)
     
     def __str__(self):
+        if self.is_reference:
+            return f"ReducedProduct(sign={self.sign}, interval={self.interval}, nonnull={self.nonnull})"
         return f"ReducedProduct(sign={self.sign}, interval={self.interval})"
     
     def __repr__(self):
         return self.__str__()
+    
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ReducedProductState):
+            return NotImplemented
+        return (self.sign == other.sign and 
+                self.interval == other.interval and 
+                self.nonnull == other.nonnull and
+                self.is_reference == other.is_reference)
+    
+    def __hash__(self) -> int:
+        return hash((self.sign, self.interval, self.nonnull, self.is_reference))
     
     def to_abstract_value(self, local_index: int) -> 'AbstractValue':
         """Convert to AbstractValue for compatibility."""
@@ -411,7 +847,7 @@ def extract_samples_from_trace(trace_data: Dict[str, Any]) -> Dict[int, List[int
     return samples
 
 
-def refine_from_trace(samples: List[int]) -> Tuple[SignDomain, IntervalDomain]:
+def refine_from_trace(samples: List[int]) -> Tuple[SignSet, IntervalDomain]:
     """
     Refine abstract domains from concrete sample values.
     
@@ -425,7 +861,7 @@ def refine_from_trace(samples: List[int]) -> Tuple[SignDomain, IntervalDomain]:
         samples: List of concrete integer values observed during execution
         
     Returns:
-        Tuple of (SignDomain, IntervalDomain) refined from samples with
+        Tuple of (SignSet, IntervalDomain) refined from samples with
         mutual refinement applied (reduced product)
     """
     # Use reduced product for mutual refinement
@@ -454,7 +890,7 @@ def integrate_abstractions(trace_path: str) -> Dict[int, AbstractValue]:
     
     This function implements the integration between:
     - IIN (Interpreter): produces traces/<method>.json with concrete execution data
-    - IAB (Abstractions): provides SignDomain, IntervalDomain, refine_from_trace()
+    - Abstract domains: SignSet, IntervalDomain, refine_from_trace()
     
     The integration uses dynamic traces to set initial abstract states (e.g., x>0)
     for subsequent static analysis, as described in our approved proposal.
@@ -468,7 +904,7 @@ def integrate_abstractions(trace_path: str) -> Dict[int, AbstractValue]:
         
     Example:
         >>> result = integrate_abstractions("traces/jpamb.cases.Simple_assertPositive_IV.json")
-        >>> result[0].sign.value  # SignValue.POSITIVE for samples [1,1,1,1,1]
+        >>> "+" in result[0].sign.signs  # True for positive samples
     """
     # Read IIN trace file
     path = Path(trace_path)
@@ -634,7 +1070,7 @@ def integrate_all_traces(traces_dir: str = "traces") -> Dict[str, IntegrationRes
     return results
 
 
-def get_sign_for_local(trace_path: str, local_idx: int) -> SignValue:
+def get_sign_for_local(trace_path: str, local_idx: int) -> SignSet:
     """
     Convenience function to get sign for a specific local variable.
     
@@ -643,14 +1079,14 @@ def get_sign_for_local(trace_path: str, local_idx: int) -> SignValue:
         local_idx: Local variable index
         
     Returns:
-        SignValue for the local variable, or TOP if not found
+        SignSet for the local variable, or TOP if not found
     """
     abstract_values = integrate_abstractions(trace_path)
     
     if local_idx in abstract_values:
-        return abstract_values[local_idx].sign.value
+        return abstract_values[local_idx].sign
     
-    return SignValue.TOP
+    return SignSet.top()
 
 
 def get_interval_for_local(trace_path: str, local_idx: int) -> IntervalValue:
@@ -680,8 +1116,8 @@ def process_example() -> Dict[int, AbstractValue]:
     From proposal: "dynamic traces to set initial abstracts like x>0"
     
     When we observe positive samples [5, 10], we refine:
-    - sign(x) = positive (SignValue.POSITIVE)
-    - interval(x) = [5, 10]
+    - sign(x) = {+} (positive)
+    - interval(x) = [5, 25]
     
     This is our dynamic refinement heuristic: using IIN traces to
     initialize abstract states for static analysis.
@@ -710,7 +1146,7 @@ def process_example_reduced() -> Dict[int, ReducedProductState]:
     return {1: reduced}
 
 
-def inform_each_other(sign: SignDomain, interval: IntervalDomain) -> Tuple[SignDomain, IntervalDomain]:
+def inform_each_other(sign: SignSet, interval: IntervalDomain) -> Tuple[SignSet, IntervalDomain]:
     """
     Module-level function for mutual refinement between sign and interval domains.
     
@@ -719,14 +1155,14 @@ def inform_each_other(sign: SignDomain, interval: IntervalDomain) -> Tuple[SignD
     during execution" (formula: 5 per abstraction after the first).
     
     Args:
-        sign: Initial sign domain
+        sign: Initial sign domain (SignSet)
         interval: Initial interval domain
         
     Returns:
         Tuple of (refined_sign, refined_interval) after mutual refinement
         
     Example:
-        >>> sign = SignDomain(SignValue.POSITIVE)
+        >>> sign = sign_positive()  # {+}
         >>> interval = IntervalDomain(IntervalValue(-5, 10))
         >>> new_sign, new_interval = inform_each_other(sign, interval)
         >>> new_interval.value.low  # Tightened to 1
@@ -745,7 +1181,7 @@ if __name__ == "__main__":
     result = process_example()
     for local_idx, abstract_val in result.items():
         print(f"  {abstract_val}")
-        print(f"    → sign = {abstract_val.sign.value.name}")
+        print(f"    → sign = {abstract_val.sign}")
         print(f"    → interval = {abstract_val.interval}")
     
     print()
@@ -753,20 +1189,20 @@ if __name__ == "__main__":
     print("-" * 50)
     
     # Show mutual refinement example
-    print("\nExample 1: POSITIVE sign tightens interval [−5, 10] to [1, 10]")
-    sign1 = SignDomain(SignValue.POSITIVE)
+    print("\nExample 1: {+} sign tightens interval [−5, 10] to [1, 10]")
+    sign1 = sign_positive()
     interval1 = IntervalDomain(IntervalValue(-5, 10))
     new_sign1, new_interval1 = inform_each_other(sign1, interval1)
     print(f"  Before: sign={sign1}, interval={interval1}")
     print(f"  After:  sign={new_sign1}, interval={new_interval1}")
     
-    print("\nExample 2: Interval [5, 100] infers POSITIVE sign")
+    print("\nExample 2: Interval [5, 100] infers {+} sign")
     reduced2 = ReducedProductState(
-        sign=SignDomain(SignValue.TOP),
+        sign=SignSet.top(),
         interval=IntervalDomain(IntervalValue(5, 100))
     )
     reduced2.inform_each_other()
-    print(f"  Before: sign=TOP, interval=[5, 100]")
+    print("  Before: sign=⊤, interval=[5, 100]")
     print(f"  After:  sign={reduced2.sign}, interval={reduced2.interval}")
     print(f"  Refinement history: {reduced2.get_refinement_history()}")
     

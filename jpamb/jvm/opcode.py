@@ -9,7 +9,6 @@ each instruction.
 
 from dataclasses import dataclass, fields
 from abc import ABC, abstractmethod
-from typing import Self
 
 import enum
 import sys
@@ -45,6 +44,8 @@ class Opcode(ABC):
                 opr = NewArray
             case "dup":
                 opr = Dup
+            case "pop":
+                opr = Pop
             case "array_store":
                 opr = ArrayStore
             case "array_load":
@@ -61,6 +62,8 @@ class Opcode(ABC):
                 opr = If
             case "get":
                 opr = Get
+            case "put":
+                opr = Put
             case "ifz":
                 opr = Ifz
             case "cast":
@@ -282,6 +285,42 @@ class Dup(Opcode):
 
     def __str__(self):
         return f"dup {self.words}"
+
+
+@dataclass(frozen=True, order=True)
+class Pop(Opcode):
+    """The pop opcode - removes the top value from the operand stack."""
+
+    words: int = 1  # pop removes 1 word, pop2 removes 2
+
+    @classmethod
+    def from_json(cls, json: dict) -> Opcode:
+        return cls(
+            offset=json["offset"],
+            words=json.get("words", 1),
+        )
+
+    def real(self) -> str:
+        if self.words == 1:
+            return "pop"
+        elif self.words == 2:
+            return "pop2"
+        return super().real()
+
+    def semantics(self) -> str | None:
+        semantic = """
+        bc[i].opr = 'pop'
+        bc[i].words = 1
+        -------------------------[pop1]
+        (i, s + [v]) -> (i+1, s)
+        """
+        return semantic
+
+    def mnemonic(self) -> str:
+        return self.real()
+
+    def __str__(self):
+        return f"pop {self.words}"
 
 
 @dataclass(frozen=True, order=True)
@@ -844,6 +883,68 @@ class Get(Opcode):
     def __str__(self):
         kind = "static" if self.static else "field"
         return f"get {kind} {self.field}"
+
+
+@dataclass(frozen=True, order=True)
+class Put(Opcode):
+    """The put opcode that stores field values (static or instance).
+
+    According to the JVM spec:
+    - For non-static fields (putfield):
+      * Pops a value and object reference from the stack
+      * Stores the value into the specified field
+      * Throws NullPointerException if object reference is null
+
+    - For static fields (putstatic):
+      * Pops a value from the stack
+      * Stores it into the specified static field
+      * May trigger class initialization if not yet initialized
+    """
+
+    static: bool
+    field: jvm.AbsFieldID
+
+    @classmethod
+    def from_json(cls, json: dict) -> "Opcode":
+        # Construct field object from the json data
+        field = jvm.AbsFieldID(
+            classname=jvm.ClassName.decode(json["field"]["class"]),
+            extension=jvm.FieldID(
+                name=json["field"]["name"],
+                type=jvm.Type.from_json(json["field"]["type"]),
+            ),
+        )
+
+        return cls(offset=json["offset"], static=json["static"], field=field)
+
+    def real(self) -> str:
+        opcode = "putstatic" if self.static else "putfield"
+        return f"{opcode} {self.field}"
+
+    def semantics(self) -> str | None:
+        semantics = """
+        bc[i].opr = 'put'
+        bc[i].static = false
+        bc[i].field = f
+        -------------------------[putfield]
+        bc |- (i, s + [objectref, value]) -> (i+1, s)
+
+        bc[i].opr = 'put'
+        bc[i].static = true
+        bc[i].field = f
+        -------------------------[putstatic]
+        bc |- (i, s + [value]) -> (i+1, s)
+        """
+
+        return None
+
+    def mnemonic(self) -> str:
+        mnemonic = "putstatic" if self.static else "putfield"
+        return mnemonic
+
+    def __str__(self):
+        kind = "static" if self.static else "field"
+        return f"put {kind} {self.field}"
 
 
 @dataclass(frozen=True, order=True)
