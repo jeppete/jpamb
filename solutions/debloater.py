@@ -21,14 +21,6 @@ from pathlib import Path
 import jpamb
 from jpamb import jvm
 
-# Add project root and components directory to path for imports
-PROJECT_ROOT = Path(__file__).parent.parent
-COMPONENTS_DIR = Path(__file__).parent / "components"
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-if str(COMPONENTS_DIR) not in sys.path:
-    sys.path.insert(0, str(COMPONENTS_DIR))
-
 # Import analysis modules (using relative imports from components dir)
 from bytecode_analysis import BytecodeAnalyzer, AnalysisResult as BytecodeResult
 from syntaxer import BloatFinder
@@ -42,6 +34,16 @@ from solutions.components.abstract_interpreter import (
     ProductValue,
 )
 from solutions.components.abstract_domain import IntervalDomain, NonNullDomain
+
+
+# Add project root and components directory to path for imports
+PROJECT_ROOT = Path(__file__).parent.parent
+COMPONENTS_DIR = Path(__file__).parent / "components"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+if str(COMPONENTS_DIR) not in sys.path:
+    sys.path.insert(0, str(COMPONENTS_DIR))
+
 
 log = logging.getLogger(__name__)
 

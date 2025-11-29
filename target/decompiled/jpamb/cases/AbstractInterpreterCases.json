@@ -160,7 +160,7 @@
             "condition": "ge",
             "offset": 5,
             "opr": "ifz",
-            "target": 10
+            "target": 8
           },
           {
             "offset": 8,

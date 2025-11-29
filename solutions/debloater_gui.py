@@ -13,15 +13,16 @@ import sys
 import logging
 from typing import Optional
 
+import jpamb
+from jpamb import jvm
+
+from debloater import Debloater, BatchDebloater, BatchResult
+
 # Add components to path
 COMPONENTS_DIR = Path(__file__).parent / "components"
 if str(COMPONENTS_DIR) not in sys.path:
     sys.path.insert(0, str(COMPONENTS_DIR))
 
-import jpamb
-from jpamb import jvm
-
-from debloater import Debloater, BatchDebloater, BatchResult
 
 
 class DebloaterGUI:
