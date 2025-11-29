@@ -945,15 +945,24 @@ def run_pipeline_all(verbose: bool = False) -> List[PipelineResult]:
     print("SUMMARY")
     print("=" * 80)
     
-    success = [r for r in results if r.error is None]
-    failed = [r for r in results if r.error is not None]
-    dead_code_found = [r for r in success if r.iai and r.iai.dead_code_count > 0]
+    # Methods that at least have ISY result (bytecode parsed)
+    has_isy = [r for r in results if r.isy is not None]
+    # Methods that also have IAI result (abstract interpretation completed)
+    has_iai = [r for r in has_isy if r.iai is not None]
+    # Methods with dead code detected
+    dead_code_found = [r for r in has_iai if r.iai.dead_code_count > 0]
+    # Methods that failed (no ISY)
+    failed = [r for r in results if r.isy is None]
+    # Methods where ISY worked but IAI failed
+    iai_failed = [r for r in has_isy if r.iai is None]
     
     print(f"\nTotal methods analyzed: {len(results)}")
     print(f"  - With traces: {len(traced_methods)}")
     print(f"  - Static-only: {len(results) - len(traced_methods)}")
-    print(f"Successful: {len(success)}")
-    print(f"Failed: {len(failed)}")
+    print(f"Bytecode parsed (ISY): {len(has_isy)}")
+    print(f"Abstract interpretation (IAI): {len(has_iai)}")
+    if iai_failed:
+        print(f"  - Skipped (unsupported opcodes): {len(iai_failed)}")
     print(f"Methods with dead code: {len(dead_code_found)}")
     
     if dead_code_found:
@@ -966,18 +975,21 @@ def run_pipeline_all(verbose: bool = False) -> List[PipelineResult]:
             short_name = r.method_id.split(".")[-1]
             print(f"  {short_name:<50} {r.iai.dead_code_count:>3} ({instr_pct:>4.1f}%)      {r.iai.dead_statement_count:>3} ({stmt_pct:>4.1f}%)")
     
-    # Totals
-    total_dead_instr = sum(r.iai.dead_code_count for r in success if r.iai)
-    total_instr = sum(r.isy.instruction_count for r in success if r.isy)
-    total_dead_stmt = sum(r.iai.dead_statement_count for r in success if r.iai)
-    total_stmt = sum(r.iai.total_statements for r in success if r.iai)
+    # Totals - use ALL bytecode as denominator
+    total_dead_instr = sum(r.iai.dead_code_count for r in has_iai)
+    total_instr_all = sum(r.isy.instruction_count for r in has_isy)
+    total_dead_stmt = sum(r.iai.dead_statement_count for r in has_iai)
+    total_stmt = sum(r.iai.total_statements for r in has_iai)
+    skipped_instr = sum(r.isy.instruction_count for r in iai_failed)
     
     print("\n" + "=" * 80)
     print("TOTALS")
     print("=" * 80)
     
-    if total_instr > 0:
-        print(f"\nInstruction-level: {total_dead_instr}/{total_instr} dead ({total_dead_instr/total_instr*100:.1f}%)")
+    if total_instr_all > 0:
+        print(f"\nInstruction-level: {total_dead_instr}/{total_instr_all} dead ({total_dead_instr/total_instr_all*100:.1f}%)")
+        if iai_failed:
+            print(f"  (Note: {len(iai_failed)} methods with {skipped_instr} instructions skipped due to unsupported opcodes)")
     if total_stmt > 0:
         print(f"Statement-level:   {total_dead_stmt}/{total_stmt} dead ({total_dead_stmt/total_stmt*100:.1f}%)")
     

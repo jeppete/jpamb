@@ -14,25 +14,25 @@
       "0": "{+}"
     },
     "static_only": {
-      "unreachable_count": 1,
-      "unreachable_pcs": [
-        18
-      ],
+      "unreachable_count": 0,
+      "unreachable_pcs": [],
       "outcomes": [
+        "null pointer",
         "assertion error",
-        "null pointer"
+        "ok"
       ]
     },
     "with_nan": {
-      "unreachable_count": 5,
+      "unreachable_count": 4,
       "unreachable_pcs": [
         10,
         13,
         14,
-        17,
-        18
+        17
       ],
-      "outcomes": []
+      "outcomes": [
+        "ok"
+      ]
     },
     "improvement": {
       "additional_unreachable": 4,
@@ -91,35 +91,30 @@
       "0": "{+}"
     },
     "static_only": {
-      "unreachable_count": 4,
-      "unreachable_pcs": [
-        18,
-        19,
-        20,
-        21
-      ],
+      "unreachable_count": 0,
+      "unreachable_pcs": [],
       "outcomes": [
+        "null pointer",
         "assertion error",
-        "null pointer"
+        "divide by zero",
+        "ok"
       ]
     },
     "with_nan": {
-      "unreachable_count": 8,
+      "unreachable_count": 4,
       "unreachable_pcs": [
         10,
         13,
         14,
-        17,
-        18,
-        19,
-        20,
-        21
+        17
       ],
-      "outcomes": []
+      "outcomes": [
+        "ok"
+      ]
     },
     "improvement": {
       "additional_unreachable": 4,
-      "fewer_outcomes": 2,
+      "fewer_outcomes": 3,
       "improved": true
     }
   },
@@ -138,25 +133,25 @@
       "0": "{+}"
     },
     "static_only": {
-      "unreachable_count": 1,
-      "unreachable_pcs": [
-        18
-      ],
+      "unreachable_count": 0,
+      "unreachable_pcs": [],
       "outcomes": [
+        "null pointer",
         "assertion error",
-        "null pointer"
+        "ok"
       ]
     },
     "with_nan": {
-      "unreachable_count": 5,
+      "unreachable_count": 4,
       "unreachable_pcs": [
         10,
         13,
         14,
-        17,
-        18
+        17
       ],
-      "outcomes": []
+      "outcomes": [
+        "ok"
+      ]
     },
     "improvement": {
       "additional_unreachable": 4,
