@@ -6,12 +6,12 @@ from typing import Dict, Iterable, Tuple, TYPE_CHECKING
 import jpamb
 from jpamb import jvm
 
-from solutions.components.abstract_domain import (
+from components.abstract_domain import (
     SignSet, SignArithmetic,
     IntervalDomain, IntervalArithmetic,
     NonNullDomain,
 )
-from solutions.components.abstract_state import Bytecode, PC, PerVarFrame, Stack
+from components.abstract_state import Bytecode, PC, PerVarFrame, Stack
 from dataclasses import dataclass
 
 # Type hints for ISY module (avoid circular imports)

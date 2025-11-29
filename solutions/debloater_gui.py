@@ -49,67 +49,90 @@ class DebloaterGUI:
     def setup_ui(self):
         """Create the main UI layout."""
         
-        # ============ TOP: Control Panel ============
-        control_frame = ttk.Frame(self.root, padding="10")
-        control_frame.pack(fill=tk.X)
+        # ============ TOP: Toolbar ============
+        toolbar = ttk.Frame(self.root, padding="8")
+        toolbar.pack(fill=tk.X)
         
-        # Mode selection
-        ttk.Label(control_frame, text="Mode:").grid(row=0, column=0, sticky=tk.W, padx=5)
+        # Mode selection (left side)
+        mode_section = ttk.Frame(toolbar)
+        mode_section.pack(side=tk.LEFT)
+        
+        ttk.Label(mode_section, text="Mode:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=(0, 8))
         self.mode_var = tk.StringVar(value="single")
-        mode_frame = ttk.Frame(control_frame)
-        mode_frame.grid(row=0, column=1, sticky=tk.W, padx=5)
-        ttk.Radiobutton(mode_frame, text="Single File", variable=self.mode_var, 
-                       value="single", command=self.toggle_mode).pack(side=tk.LEFT, padx=5)
-        ttk.Radiobutton(mode_frame, text="Batch (Directory)", variable=self.mode_var, 
-                       value="batch", command=self.toggle_mode).pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(mode_section, text="Single File", variable=self.mode_var, 
+                       value="single", command=self.toggle_mode).pack(side=tk.LEFT)
+        ttk.Radiobutton(mode_section, text="Batch", variable=self.mode_var, 
+                       value="batch", command=self.toggle_mode).pack(side=tk.LEFT, padx=(8, 0))
+        
+        # Action buttons (right side)
+        btn_section = ttk.Frame(toolbar)
+        btn_section.pack(side=tk.RIGHT)
+        
+        ttk.Button(btn_section, text="Clear", command=self.clear_results).pack(side=tk.RIGHT, padx=4)
+        self.analyze_btn = ttk.Button(btn_section, text="🔍 Analyze", command=self.run_analysis)
+        self.analyze_btn.pack(side=tk.RIGHT, padx=4)
+        
+        # ============ INPUT SECTION ============
+        input_container = ttk.Frame(self.root, padding="8")
+        input_container.pack(fill=tk.X)
         
         # Single file inputs (shown by default)
-        self.single_frame = ttk.Frame(control_frame)
-        self.single_frame.grid(row=1, column=0, columnspan=3, sticky=tk.EW, pady=5)
+        self.single_frame = ttk.LabelFrame(input_container, text="File Selection", padding="8")
+        self.single_frame.pack(fill=tk.X)
         
-        ttk.Label(self.single_frame, text="Class:").grid(row=0, column=0, sticky=tk.W, padx=5)
-        self.class_entry = ttk.Entry(self.single_frame, width=40)
-        self.class_entry.grid(row=0, column=1, padx=5)
+        # Class input row
+        class_row = ttk.Frame(self.single_frame)
+        class_row.pack(fill=tk.X, pady=2)
+        ttk.Label(class_row, text="Class:", width=8).pack(side=tk.LEFT)
+        self.class_entry = ttk.Entry(class_row)
+        self.class_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
         self.class_entry.insert(0, "jpamb.cases.Simple")
         
-        ttk.Label(self.single_frame, text="Source:").grid(row=1, column=0, sticky=tk.W, padx=5)
-        self.source_entry = ttk.Entry(self.single_frame, width=40)
-        self.source_entry.grid(row=1, column=1, padx=5)
+        # Source input row
+        source_row = ttk.Frame(self.single_frame)
+        source_row.pack(fill=tk.X, pady=2)
+        ttk.Label(source_row, text="Source:", width=8).pack(side=tk.LEFT)
+        self.source_entry = ttk.Entry(source_row)
+        self.source_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
         self.source_entry.insert(0, "src/main/java/jpamb/cases/Simple.java")
-        
-        ttk.Button(self.single_frame, text="Browse File...", 
-                  command=self.browse_source).grid(row=1, column=2, padx=5)
+        ttk.Button(source_row, text="Browse...", command=self.browse_source).pack(side=tk.RIGHT)
         
         # Batch directory input (hidden by default)
-        self.batch_frame = ttk.Frame(control_frame)
+        self.batch_frame = ttk.LabelFrame(input_container, text="Directory Selection", padding="8")
         
-        ttk.Label(self.batch_frame, text="Directory:").grid(row=0, column=0, sticky=tk.W, padx=5)
-        self.dir_entry = ttk.Entry(self.batch_frame, width=40)
-        self.dir_entry.grid(row=0, column=1, padx=5)
+        dir_row = ttk.Frame(self.batch_frame)
+        dir_row.pack(fill=tk.X, pady=2)
+        ttk.Label(dir_row, text="Directory:", width=8).pack(side=tk.LEFT)
+        self.dir_entry = ttk.Entry(dir_row)
+        self.dir_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
         self.dir_entry.insert(0, "src/main/java/jpamb/cases")
+        ttk.Button(dir_row, text="Browse...", command=self.browse_directory).pack(side=tk.RIGHT)
         
-        ttk.Button(self.batch_frame, text="Browse Directory...", 
-                  command=self.browse_directory).grid(row=0, column=2, padx=5)
+        # ============ OPTIONS SECTION ============
+        options_container = ttk.Frame(self.root, padding="8")
+        options_container.pack(fill=tk.X)
         
-        # Analysis options
-        options_frame = ttk.LabelFrame(control_frame, text="Analysis Options", padding="5")
-        options_frame.grid(row=0, column=2, rowspan=2, padx=10, pady=5)
+        options_frame = ttk.LabelFrame(options_container, text="Analysis Options", padding="8")
+        options_frame.pack(fill=tk.X)
+        
+        options_row = ttk.Frame(options_frame)
+        options_row.pack(fill=tk.X)
         
         # Abstract interpreter toggle
         self.abstract_interp_var = tk.BooleanVar(value=True)
         self.abstract_interp_cb = ttk.Checkbutton(
-            options_frame, 
+            options_row, 
             text="🧠 Abstract Interpreter",
             variable=self.abstract_interp_var,
             command=self.on_abstract_toggle
         )
-        self.abstract_interp_cb.pack(anchor=tk.W)
+        self.abstract_interp_cb.pack(side=tk.LEFT, padx=(0, 16))
         
-        # Domain selection (only visible when abstract interpreter is enabled)
-        self.domain_frame = ttk.Frame(options_frame)
-        self.domain_frame.pack(fill=tk.X, pady=2)
+        # Domain selection
+        self.domain_frame = ttk.Frame(options_row)
+        self.domain_frame.pack(side=tk.LEFT)
         
-        ttk.Label(self.domain_frame, text="Domain:", font=("Arial", 8)).pack(side=tk.LEFT, padx=2)
+        ttk.Label(self.domain_frame, text="Domain:").pack(side=tk.LEFT, padx=(0, 4))
         self.domain_var = tk.StringVar(value="product")
         self.domain_combo = ttk.Combobox(
             self.domain_frame, 
@@ -118,69 +141,51 @@ class DebloaterGUI:
             state="readonly",
             width=10
         )
-        self.domain_combo.pack(side=tk.LEFT, padx=2)
+        self.domain_combo.pack(side=tk.LEFT)
         
         # Tooltip-style label
-        self.domain_info = ttk.Label(options_frame, text="Product = Interval + Nullness (most precise)", 
-                                    font=("Arial", 7), foreground="gray")
-        self.domain_info.pack(anchor=tk.W)
+        self.domain_info = ttk.Label(options_row, text="(Product = Interval + Nullness)", 
+                                    font=("Arial", 9), foreground="gray")
+        self.domain_info.pack(side=tk.LEFT, padx=8)
         
-        # Action buttons
-        self.analyze_btn = ttk.Button(control_frame, text="🔍 Analyze", 
-                                      command=self.run_analysis)
-        self.analyze_btn.grid(row=0, column=3, rowspan=2, padx=10, pady=5)
+        # ============ STATISTICS BAR ============
+        stats_container = ttk.Frame(self.root, padding="8")
+        stats_container.pack(fill=tk.X)
         
-        ttk.Button(control_frame, text="Clear", 
-                  command=self.clear_results).grid(row=0, column=4, rowspan=2, padx=5)
+        stats_frame = ttk.LabelFrame(stats_container, text="Statistics", padding="8")
+        stats_frame.pack(fill=tk.X)
         
-        # ============ MIDDLE: Statistics Panel ============
-        stats_frame = ttk.LabelFrame(self.root, text="Statistics", padding="10")
-        stats_frame.pack(fill=tk.X, padx=10, pady=5)
+        # Use a horizontal row with evenly spaced stat cards
+        stats_row = ttk.Frame(stats_frame)
+        stats_row.pack(fill=tk.X)
         
-        # Create stats labels in a grid
-        stats_grid = ttk.Frame(stats_frame)
-        stats_grid.pack()
+        # Configure grid columns to expand equally
+        for i in range(5):
+            stats_row.columnconfigure(i, weight=1)
         
-        # Source stats
-        ttk.Label(stats_grid, text="Source Findings:", 
-                 font=("Arial", 10, "bold")).grid(row=0, column=0, sticky=tk.W, padx=10)
-        self.source_count_label = ttk.Label(stats_grid, text="0", 
-                                           font=("Arial", 12))
-        self.source_count_label.grid(row=0, column=1, padx=5)
+        # Stat card helper function
+        def create_stat_card(parent, col, label_text, initial_value, fg_color=None):
+            card = ttk.Frame(parent)
+            card.grid(row=0, column=col, padx=8, sticky=tk.NSEW)
+            
+            value_label = ttk.Label(card, text=initial_value, font=("Arial", 14, "bold"))
+            if fg_color:
+                value_label.config(foreground=fg_color)
+            value_label.pack()
+            
+            ttk.Label(card, text=label_text, font=("Arial", 9), foreground="gray").pack()
+            return value_label
         
-        # Bytecode stats
-        ttk.Label(stats_grid, text="Dead Instructions:", 
-                 font=("Arial", 10, "bold")).grid(row=0, column=2, sticky=tk.W, padx=10)
-        self.bytecode_count_label = ttk.Label(stats_grid, text="0 / 0 (0.0%)", 
-                                             font=("Arial", 12))
-        self.bytecode_count_label.grid(row=0, column=3, padx=5)
-        
-        # Unreachable methods
-        ttk.Label(stats_grid, text="Unreachable Methods:", 
-                 font=("Arial", 10, "bold")).grid(row=0, column=4, sticky=tk.W, padx=10)
-        self.methods_count_label = ttk.Label(stats_grid, text="0", 
-                                            font=("Arial", 12))
-        self.methods_count_label.grid(row=0, column=5, padx=5)
-        
-        # Verified by both
-        ttk.Label(stats_grid, text="Verified by Both:", 
-                 font=("Arial", 10, "bold")).grid(row=1, column=0, sticky=tk.W, padx=10, pady=5)
-        self.verified_count_label = ttk.Label(stats_grid, text="0", 
-                                             font=("Arial", 12, "bold"),
-                                             foreground="darkgreen")
-        self.verified_count_label.grid(row=1, column=1, padx=5)
-        
-        # Total lines
-        ttk.Label(stats_grid, text="Total Dead Lines:", 
-                 font=("Arial", 10, "bold")).grid(row=1, column=2, sticky=tk.W, padx=10, pady=5)
-        self.total_lines_label = ttk.Label(stats_grid, text="0", 
-                                          font=("Arial", 12, "bold"),
-                                          foreground="red")
-        self.total_lines_label.grid(row=1, column=3, padx=5)
+        # Create stat cards
+        self.source_count_label = create_stat_card(stats_row, 0, "Source Findings", "0")
+        self.bytecode_count_label = create_stat_card(stats_row, 1, "Dead Instructions", "0 / 0")
+        self.methods_count_label = create_stat_card(stats_row, 2, "Unreachable Methods", "0")
+        self.verified_count_label = create_stat_card(stats_row, 3, "Verified (Both)", "0", "darkgreen")
+        self.total_lines_label = create_stat_card(stats_row, 4, "Total Dead Lines", "0", "darkred")
         
         # Progress bar
         self.progress = ttk.Progressbar(stats_frame, mode='indeterminate')
-        self.progress.pack(fill=tk.X, pady=5)
+        self.progress.pack(fill=tk.X, pady=(8, 0))
         
         # ============ BOTTOM: Results Panel ============
         results_frame = ttk.Frame(self.root)
@@ -367,12 +372,12 @@ class DebloaterGUI:
         
         if self.batch_mode:
             # Hide single file inputs, show batch inputs
-            self.single_frame.grid_remove()
-            self.batch_frame.grid(row=1, column=0, columnspan=3, sticky=tk.EW, pady=5)
+            self.single_frame.pack_forget()
+            self.batch_frame.pack(fill=tk.X)
         else:
             # Hide batch inputs, show single file inputs
-            self.batch_frame.grid_remove()
-            self.single_frame.grid(row=1, column=0, columnspan=3, sticky=tk.EW, pady=5)
+            self.batch_frame.pack_forget()
+            self.single_frame.pack(fill=tk.X)
     
     def on_abstract_toggle(self):
         """Handle abstract interpreter toggle."""
