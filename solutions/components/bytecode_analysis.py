@@ -189,6 +189,19 @@ class BytecodeAnalyzer:
         if not bytecode:
             return cfg
         
+        # Build index-to-offset mapping
+        # In jpamb's bytecode JSON, jump targets are instruction indices (0-based
+        # position in the bytecode list), not byte offsets. We need to convert.
+        index_to_offset: Dict[int, int] = {}
+        for i, inst in enumerate(bytecode):
+            offset = inst.get("offset", -1)
+            if offset >= 0:
+                index_to_offset[i] = offset
+        
+        def resolve_target(target_index: int) -> int | None:
+            """Convert a target index to its corresponding byte offset."""
+            return index_to_offset.get(target_index)
+        
         # Create nodes
         for inst in bytecode:
             offset = inst.get("offset", -1)
@@ -205,9 +218,11 @@ class BytecodeAnalyzer:
             
             if opr in ("if", "ifz"):
                 # Branch: add both target and fall-through edges
-                target = inst.get("target")
-                if target is not None:
-                    cfg.add_edge(offset, target)
+                target_index = inst.get("target")
+                if target_index is not None:
+                    target_offset = resolve_target(target_index)
+                    if target_offset is not None:
+                        cfg.add_edge(offset, target_offset)
                 
                 if i + 1 < len(bytecode):
                     next_offset = bytecode[i + 1].get("offset")
@@ -216,30 +231,38 @@ class BytecodeAnalyzer:
             
             elif opr == "goto":
                 # Unconditional jump
-                target = inst.get("target")
-                if target is not None:
-                    cfg.add_edge(offset, target)
+                target_index = inst.get("target")
+                if target_index is not None:
+                    target_offset = resolve_target(target_index)
+                    if target_offset is not None:
+                        cfg.add_edge(offset, target_offset)
             
             elif opr in ("return", "throw"):
                 # Method exits - no successors
                 pass
             
             elif opr in ("tableswitch", "lookupswitch"):
-                # Switch statements
-                default = inst.get("default")
-                if default is not None:
-                    cfg.add_edge(offset, default)
+                # Switch statements - default and targets are also indices
+                default_index = inst.get("default")
+                if default_index is not None:
+                    default_offset = resolve_target(default_index)
+                    if default_offset is not None:
+                        cfg.add_edge(offset, default_offset)
                 
                 # Handle targets - can be list of ints or list of dicts
                 for case in inst.get("targets", []):
                     if isinstance(case, int):
-                        # tableswitch: targets is list of offsets
-                        cfg.add_edge(offset, case)
+                        # tableswitch: targets is list of indices
+                        target_offset = resolve_target(case)
+                        if target_offset is not None:
+                            cfg.add_edge(offset, target_offset)
                     elif isinstance(case, dict):
                         # lookupswitch: targets is list of {match, target} dicts
-                        target = case.get("target")
-                        if target is not None:
-                            cfg.add_edge(offset, target)
+                        target_index = case.get("target")
+                        if target_index is not None:
+                            target_offset = resolve_target(target_index)
+                            if target_offset is not None:
+                                cfg.add_edge(offset, target_offset)
             
             else:
                 # Normal instruction - fall through
