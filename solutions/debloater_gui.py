@@ -149,6 +149,26 @@ class DebloaterGUI:
                                     font=("Arial", 9), foreground="gray")
         self.domain_info.pack(side=tk.LEFT, padx=8)
         
+        # Dynamic profiling toggle (second row)
+        options_row2 = ttk.Frame(options_frame)
+        options_row2.pack(fill=tk.X, pady=(8, 0))
+        
+        self.dynamic_profiling_var = tk.BooleanVar(value=False)
+        self.dynamic_profiling_cb = ttk.Checkbutton(
+            options_row2,
+            text="⚡ Dynamic Profiling",
+            variable=self.dynamic_profiling_var
+        )
+        self.dynamic_profiling_cb.pack(side=tk.LEFT, padx=(0, 8))
+        
+        self.profiling_warning = ttk.Label(
+            options_row2, 
+            text="⚠️ UNSOUND - hints only, not for code deletion!",
+            font=("Arial", 9), 
+            foreground="orange"
+        )
+        self.profiling_warning.pack(side=tk.LEFT)
+        
         # ============ STATISTICS BAR ============
         stats_container = ttk.Frame(self.root, padding="8")
         stats_container.pack(fill=tk.X)
@@ -246,6 +266,7 @@ class DebloaterGUI:
         self.source_text.tag_config('dead_source', background='#664433', foreground='#ffcc99')
         self.source_text.tag_config('dead_bytecode', background='#334466', foreground='#99ccff')
         self.source_text.tag_config('current_line', background='#555533', foreground='#ffff99')
+        self.source_text.tag_config('uncovered_cold', background='#665500', foreground='#ffdd88')  # Orange/yellow for cold code
         
         # Add legend
         legend_frame = ttk.Frame(source_frame)
@@ -267,6 +288,11 @@ class DebloaterGUI:
         bytecode_label = tk.Label(legend_frame, text=" Bytecode ", bg='#334466', fg='#99ccff',
                                  relief=tk.RAISED, padx=3, font=('Courier', 8))
         bytecode_label.pack(side=tk.LEFT, padx=2)
+        
+        # Uncovered (profiling)
+        uncovered_label = tk.Label(legend_frame, text=" Cold Code ", bg='#665500', fg='#ffdd88',
+                                 relief=tk.RAISED, padx=3, font=('Courier', 8))
+        uncovered_label.pack(side=tk.LEFT, padx=2)
         
         # Selected
         selected_label = tk.Label(legend_frame, text=" Selected ", bg='#555533', fg='#ffff99',
@@ -293,7 +319,11 @@ class DebloaterGUI:
         self.bytecode_tab = self.create_results_tab("Bytecode")
         self.notebook.add(self.bytecode_tab, text="🔍 Bytecode Analysis")
         
-        # Tab 4: Log
+        # Tab 4: Dynamic Profiling (new)
+        self.profiling_tab = self.create_profiling_tab()
+        self.notebook.add(self.profiling_tab, text="⚡ Dynamic Profiling")
+        
+        # Tab 5: Log
         self.log_tab = scrolledtext.ScrolledText(self.notebook, wrap=tk.WORD, 
                                                  height=15, font=("Courier", 9))
         self.notebook.add(self.log_tab, text="📄 Log")
@@ -344,6 +374,82 @@ class DebloaterGUI:
         
         # Bind click event to jump to line
         tree.bind('<ButtonRelease-1>', lambda event: self.on_tree_click(event, tree))
+        
+        return frame
+    
+    def create_profiling_tab(self):
+        """Create the dynamic profiling results tab."""
+        frame = ttk.Frame(self.notebook)
+        
+        # Warning banner at top
+        warning_frame = ttk.Frame(frame)
+        warning_frame.pack(fill=tk.X, pady=4, padx=4)
+        
+        warning_label = ttk.Label(
+            warning_frame,
+            text="⚠️  UNSOUND: These are hints only! Do NOT use for code deletion!",
+            font=("Arial", 10, "bold"),
+            foreground="orange"
+        )
+        warning_label.pack(side=tk.LEFT)
+        
+        # Summary stats
+        stats_frame = ttk.LabelFrame(frame, text="Profiling Summary", padding="8")
+        stats_frame.pack(fill=tk.X, padx=4, pady=4)
+        
+        stats_row = ttk.Frame(stats_frame)
+        stats_row.pack(fill=tk.X)
+        
+        # Stats labels
+        self.prof_methods_label = ttk.Label(stats_row, text="Methods: 0", font=("Arial", 10))
+        self.prof_methods_label.pack(side=tk.LEFT, padx=(0, 16))
+        
+        self.prof_executions_label = ttk.Label(stats_row, text="Executions: 0", font=("Arial", 10))
+        self.prof_executions_label.pack(side=tk.LEFT, padx=(0, 16))
+        
+        self.prof_coverage_label = ttk.Label(stats_row, text="Avg Coverage: 0%", font=("Arial", 10))
+        self.prof_coverage_label.pack(side=tk.LEFT, padx=(0, 16))
+        
+        # Tree view for method profiles
+        tree_frame = ttk.Frame(frame)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        
+        # Scrollbars
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical")
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        hsb = ttk.Scrollbar(tree_frame, orient="horizontal")
+        hsb.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        # TreeView with coverage columns
+        columns = ("Coverage", "Executed", "NotExecuted", "ValueRanges")
+        tree = ttk.Treeview(tree_frame, columns=columns, 
+                           yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        
+        tree.heading("#0", text="Method", anchor=tk.W)
+        tree.heading("Coverage", text="Coverage", anchor=tk.CENTER)
+        tree.heading("Executed", text="Executed", anchor=tk.CENTER)
+        tree.heading("NotExecuted", text="Not Executed", anchor=tk.CENTER)
+        tree.heading("ValueRanges", text="Value Ranges", anchor=tk.W)
+        
+        tree.column("#0", width=250)
+        tree.column("Coverage", width=80, anchor=tk.CENTER)
+        tree.column("Executed", width=80, anchor=tk.CENTER)
+        tree.column("NotExecuted", width=100, anchor=tk.CENTER)
+        tree.column("ValueRanges", width=300)
+        
+        tree.pack(fill=tk.BOTH, expand=True)
+        
+        vsb.config(command=tree.yview)
+        hsb.config(command=tree.xview)
+        
+        self.profiling_tree = tree
+        
+        # Bind click handler for highlighting
+        tree.bind('<ButtonRelease-1>', self.on_profiling_tree_click)
+        
+        # Store profiling data for click handling
+        self.profiling_method_data = {}  # method_name -> {'profile': ..., 'line_table': ..., 'bytecode': ...}
         
         return frame
     
@@ -406,10 +512,17 @@ class DebloaterGUI:
     def clear_results(self):
         """Clear all results and reset UI."""
         # Clear trees
-        for tree_name in ['combined_tree', 'source_tree', 'bytecode_tree']:
-            tree = getattr(self, tree_name)
-            for item in tree.get_children():
-                tree.delete(item)
+        for tree_name in ['combined_tree', 'source_tree', 'bytecode_tree', 'profiling_tree']:
+            tree = getattr(self, tree_name, None)
+            if tree:
+                for item in tree.get_children():
+                    tree.delete(item)
+        
+        # Reset profiling stats
+        if hasattr(self, 'prof_methods_label'):
+            self.prof_methods_label.config(text="Methods: 0")
+            self.prof_executions_label.config(text="Executions: 0")
+            self.prof_coverage_label.config(text="Avg Coverage: 0%")
         
         # Clear log
         self.log_tab.delete(1.0, tk.END)
@@ -564,6 +677,90 @@ class DebloaterGUI:
             except (ValueError, IndexError):
                 pass  # Not a valid line number
     
+    def on_profiling_tree_click(self, event):
+        """Handle click on profiling tree to highlight uncovered code in source viewer."""
+        selection = self.profiling_tree.selection()
+        if not selection:
+            return
+        
+        item = selection[0]
+        item_text = self.profiling_tree.item(item, 'text')
+        
+        # Check if this is a method item (has icon prefix)
+        if not any(icon in item_text for icon in ['⚠️', '🔶', '✅']):
+            return
+        
+        # Extract method name from item text (remove icon)
+        method_short_name = item_text.replace('⚠️', '').replace('🔶', '').replace('✅', '').strip()
+        
+        # Find the full method name in our data
+        full_method_name = None
+        for name in self.profiling_method_data.keys():
+            if name.endswith('.' + method_short_name) or name == method_short_name:
+                full_method_name = name
+                break
+        
+        if not full_method_name or full_method_name not in self.profiling_method_data:
+            return
+        
+        data = self.profiling_method_data[full_method_name]
+        profile = data['profile']
+        line_table = data.get('line_table', [])
+        
+        # Get uncovered indices
+        uncovered_indices = profile.coverage.get_uncovered_indices()
+        
+        if not uncovered_indices or not line_table:
+            self.log(f"No uncovered code to highlight for {method_short_name}")
+            return
+        
+        # Map indices to lines
+        uncovered_lines = set()
+        for idx in uncovered_indices:
+            line_num = self._index_to_line(idx, line_table)
+            if line_num:
+                uncovered_lines.add(line_num)
+        
+        # Highlight the uncovered lines
+        self.highlight_uncovered_code(uncovered_lines)
+        
+        # Jump to first uncovered line
+        if uncovered_lines:
+            first_line = min(uncovered_lines)
+            self.jump_to_line(first_line)
+            self.log(f"Highlighted {len(uncovered_lines)} uncovered lines for {method_short_name}")
+    
+    def _index_to_line(self, inst_index: int, line_table: list) -> int:
+        """Convert instruction index to source line number."""
+        best_line = None
+        for entry in line_table:
+            entry_index = entry.get("offset", -1)  # "offset" is actually instruction index
+            if entry_index <= inst_index:
+                best_line = entry.get("line")
+            else:
+                break
+        return best_line
+    
+    def highlight_uncovered_code(self, lines: set):
+        """
+        Highlight uncovered (cold) code lines in the source viewer.
+        
+        Args:
+            lines: Set of line numbers that were not executed during profiling
+        """
+        self.source_text.config(state='normal')
+        
+        # Clear previous uncovered highlights
+        self.source_text.tag_remove('uncovered_cold', 1.0, tk.END)
+        
+        # Highlight each uncovered line
+        for line_num in lines:
+            start = f"{line_num}.0"
+            end = f"{line_num}.end"
+            self.source_text.tag_add('uncovered_cold', start, end)
+        
+        self.source_text.config(state='disabled')
+    
     def run_analysis(self):
         """Run the debloating analysis."""
         if self.batch_mode:
@@ -608,10 +805,12 @@ class DebloaterGUI:
             # Create debloater with custom logging and settings
             enable_abstract = self.abstract_interp_var.get()
             domain = self.domain_var.get()
+            enable_profiling = self.dynamic_profiling_var.get()
             self.debloater = DebloaterWithGUILogging(
                 self.suite, self, 
                 enable_abstract_interpreter=enable_abstract,
-                abstract_domain=domain
+                abstract_domain=domain,
+                enable_dynamic_profiling=enable_profiling
             )
             
             # Run analysis
@@ -727,6 +926,11 @@ class DebloaterGUI:
             self.populate_combined_tree(combined)
             # Highlight dead code in source viewer
             self.highlight_dead_code(combined.by_line)
+        
+        # Display profiling results if available
+        profiling_result = results.get('profiling')
+        if profiling_result:
+            self.populate_profiling_tree(profiling_result)
     
     def display_batch_results(self, batch_result: BatchResult):
         """Display batch analysis results in the UI."""
@@ -840,13 +1044,159 @@ class DebloaterGUI:
             for offset in sorted(offsets):
                 tree.insert(method_id, "end", text="🔍",
                            values=("", "dead_code", f"offset {offset}"))
+    
+    def populate_profiling_tree(self, profiling_result):
+        """Populate the dynamic profiling results tree."""
+        tree = self.profiling_tree
+        
+        # Clear existing items and method data
+        for item in tree.get_children():
+            tree.delete(item)
+        self.profiling_method_data.clear()
+        
+        # Update summary stats
+        method_count = len(profiling_result.method_profiles)
+        total_execs = profiling_result.total_executions
+        avg_coverage = profiling_result._get_average_coverage()
+        
+        self.prof_methods_label.config(text=f"Methods: {method_count}")
+        self.prof_executions_label.config(text=f"Executions: {total_execs}")
+        self.prof_coverage_label.config(text=f"Avg Coverage: {avg_coverage:.1f}%")
+        
+        # Load line tables for all profiled methods
+        self._load_method_line_tables(profiling_result)
+        
+        # Group methods by coverage (low coverage first - potential issues)
+        profiles_by_coverage = []
+        for name, profile in profiling_result.method_profiles.items():
+            coverage_pct = profile.coverage.get_coverage_percentage()
+            profiles_by_coverage.append((coverage_pct, name, profile))
+        
+        profiles_by_coverage.sort()  # Low coverage first
+        
+        for coverage_pct, name, profile in profiles_by_coverage:
+            # Format coverage with color indicator
+            if coverage_pct < 50:
+                icon = "⚠️"
+            elif coverage_pct < 80:
+                icon = "🔶"
+            else:
+                icon = "✅"
+            
+            # Get coverage stats
+            executed = len(profile.coverage.executed_indices)
+            uncovered_indices = profile.coverage.get_uncovered_indices()
+            not_executed = len(uncovered_indices)
+            
+            # Format value ranges
+            value_ranges = []
+            for idx, range_data in profile.local_ranges.items():
+                if range_data.min_value is not None:
+                    if range_data.min_value >= 0:
+                        hint = "≥0"
+                    elif range_data.max_value is not None and range_data.max_value <= 0:
+                        hint = "≤0"
+                    else:
+                        hint = f"[{range_data.min_value}, {range_data.max_value}]"
+                    value_ranges.append(f"L{idx}: {hint}")
+            
+            value_ranges_str = ", ".join(value_ranges[:3])
+            if len(value_ranges) > 3:
+                value_ranges_str += f" (+{len(value_ranges)-3} more)"
+            
+            # Short method name for display
+            short_name = name.split(".")[-1] if "." in name else name
+            
+            # Add method row
+            method_id = tree.insert("", "end", text=f"{icon} {short_name}",
+                                   values=(f"{coverage_pct:.0f}%", 
+                                          str(executed), 
+                                          str(not_executed),
+                                          value_ranges_str))
+            
+            # Add children for not-executed code (show lines if available)
+            if not_executed > 0:
+                # Get line table for this method
+                method_data = self.profiling_method_data.get(name, {})
+                line_table = method_data.get('line_table', [])
+                
+                # Map indices to lines
+                uncovered_lines = set()
+                for idx in uncovered_indices:
+                    line_num = self._index_to_line(idx, line_table)
+                    if line_num:
+                        uncovered_lines.add(line_num)
+                
+                if uncovered_lines:
+                    not_exec_id = tree.insert(method_id, "end", text="📍 Uncovered lines:",
+                                             values=("", "", "", ""))
+                    lines_str = ", ".join(str(ln) for ln in sorted(uncovered_lines))
+                    tree.insert(not_exec_id, "end", text="",
+                               values=("", "", "", f"Lines: {lines_str}"))
+                else:
+                    # Fallback to showing indices if no line mapping
+                    not_exec_id = tree.insert(method_id, "end", text="📍 Uncovered indices:",
+                                             values=("", "", "", ""))
+                    indices_str = ", ".join(str(i) for i in sorted(list(uncovered_indices)[:20]))
+                    if len(uncovered_indices) > 20:
+                        indices_str += f" (+{len(uncovered_indices)-20} more)"
+                    tree.insert(not_exec_id, "end", text="",
+                               values=("", "", "", indices_str))
+            
+            # Add children for value ranges if any
+            if profile.local_ranges:
+                ranges_id = tree.insert(method_id, "end", text="📊 Value ranges:",
+                                       values=("", "", "", ""))
+                for idx, range_data in profile.local_ranges.items():
+                    if range_data.min_value is not None:
+                        range_str = f"[{range_data.min_value}, {range_data.max_value}]"
+                        tree.insert(ranges_id, "end", text=f"  Local {idx}",
+                                   values=("", "", "", range_str))
+    
+    def _load_method_line_tables(self, profiling_result):
+        """Load line tables from bytecode for all profiled methods."""
+        if not self.debloater:
+            return
+        
+        # Get the class name from the first method
+        if not profiling_result.method_profiles:
+            return
+        
+        first_method = list(profiling_result.method_profiles.keys())[0]
+        # Extract class name: jpamb/cases/Simple.methodName -> jpamb/cases/Simple
+        class_name = first_method.rsplit('.', 1)[0] if '.' in first_method else first_method
+        
+        try:
+            from jpamb import jvm
+            cls = self.suite.findclass(jvm.ClassName(class_name))
+            methods = cls.get("methods", [])
+            
+            # Build a lookup of method name -> line table
+            for method_dict in methods:
+                method_name = method_dict.get("name", "<unknown>")
+                full_name = f"{class_name}.{method_name}"
+                
+                if full_name in profiling_result.method_profiles:
+                    code = method_dict.get("code", {})
+                    line_table = code.get("lines", [])
+                    bytecode = code.get("bytecode", [])
+                    
+                    self.profiling_method_data[full_name] = {
+                        'profile': profiling_result.method_profiles[full_name],
+                        'line_table': line_table,
+                        'bytecode': bytecode
+                    }
+        except Exception as e:
+            self.log(f"Warning: Could not load line tables: {e}", "WARNING")
 
 
 class DebloaterWithGUILogging(Debloater):
     """Debloater that logs to GUI instead of console."""
     
-    def __init__(self, suite, gui, enable_abstract_interpreter=True, abstract_domain="product"):
-        super().__init__(suite, enable_abstract_interpreter, abstract_domain)
+    def __init__(self, suite, gui, enable_abstract_interpreter=True, abstract_domain="product",
+                 enable_dynamic_profiling=False):
+        super().__init__(suite, enable_abstract_interpreter, abstract_domain,
+                        enable_dynamic_profiling=enable_dynamic_profiling)
         self.gui = gui
     
     def analyze_class(self, classname, source_file=None, verbose=False):
@@ -875,6 +1225,20 @@ class DebloaterWithGUILogging(Debloater):
         total_dead = sum(len(offsets) for offsets in bytecode_result.dead_instructions.values())
         self.gui.log(f"  Found {len(bytecode_result.unreachable_methods)} unreachable methods")
         self.gui.log(f"  Found {total_dead} dead instructions")
+        
+        # Run dynamic profiling if enabled
+        if self.enable_dynamic_profiling:
+            self.gui.log("\n[Dynamic Profiling] Executing with sample inputs")
+            self.gui.log("  ⚠️ WARNING: Dynamic profiling is UNSOUND for dead code detection!")
+            self.gui.update_status("Running dynamic profiling...")
+            profiling_result = self.run_dynamic_profiling(classname)
+            self.results['profiling'] = profiling_result
+            
+            if profiling_result:
+                avg_coverage = profiling_result._get_average_coverage()
+                self.gui.log(f"  Profiled {len(profiling_result.method_profiles)} methods")
+                self.gui.log(f"  Average coverage: {avg_coverage:.1f}%")
+                self.gui.log(f"  Total executions: {profiling_result.total_executions}")
         
         # Verify suspected unused imports with bytecode
         source_result = self.results.get('source')

@@ -33,3 +33,5 @@ build/
 leananalyzer
 
 result
+
+.DS_Store

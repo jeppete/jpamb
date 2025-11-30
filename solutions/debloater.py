@@ -21,6 +21,32 @@ from pathlib import Path
 import jpamb
 from jpamb import jvm
 
+# Import analysis modules (using relative imports from components dir)
+from components.bytecode_analysis import BytecodeAnalyzer, AnalysisResult as BytecodeResult
+from components.syntaxer import BloatFinder
+from components.syntaxer.utils import create_java_parser
+
+# Import abstract interpreter with all domains (using full path from project root)
+from components.abstract_interpreter import (
+    interval_unbounded_run,
+    product_unbounded_run,
+    Bytecode,
+    ProductValue,
+)
+from components.abstract_domain import IntervalDomain, NonNullDomain
+
+# Import dynamic profiler (optional, for runtime profiling)
+try:
+    from components.dynamic_profiler import (
+        DynamicProfiler,
+        ProfilingResult,
+        print_profiling_report,
+    )
+    DYNAMIC_PROFILER_AVAILABLE = True
+except ImportError:
+    DYNAMIC_PROFILER_AVAILABLE = False
+
+
 # Add project root and components directory to path for imports
 PROJECT_ROOT = Path(__file__).parent.parent
 SOLUTIONS_DIR = Path(__file__).parent
@@ -94,12 +120,17 @@ class Debloater:
     1. Source pipeline: Fast syntactic analysis on Java source
     2. Bytecode pipeline: Multi-phase analysis on bytecode (optimized sequentially)
     
+    Optional:
+    3. Dynamic profiling: Execute with sample inputs to gather hints (UNSOUND for deletion)
+    
     Then combines results and presents to developer.
     """
     
     def __init__(self, suite: jpamb.Suite, 
                  enable_abstract_interpreter: bool = True,
-                 abstract_domain: str = "product"):
+                 abstract_domain: str = "product",
+                 enable_dynamic_profiling: bool = False,
+                 profiling_samples: int = 20):
         """
         Initialize the debloater.
         
@@ -107,11 +138,15 @@ class Debloater:
             suite: JPAMB Suite for bytecode access
             enable_abstract_interpreter: If True, run Phase 2 abstract interpretation
             abstract_domain: Which domain to use ("sign", "interval", "product")
+            enable_dynamic_profiling: If True, run dynamic profiling (hints only, unsound)
+            profiling_samples: Number of sample inputs per method for profiling
         """
         self.suite = suite
         self.results = {}
         self.enable_abstract_interpreter = enable_abstract_interpreter
         self.abstract_domain = abstract_domain
+        self.enable_dynamic_profiling = enable_dynamic_profiling
+        self.profiling_samples = profiling_samples
     
     def analyze_class(self, classname: jvm.ClassName, source_file: Optional[Path] = None,
                       verbose: bool = True):
@@ -144,6 +179,24 @@ class Debloater:
         log.info("\n[Pipeline 2] Bytecode Analysis")
         bytecode_result = self.run_bytecode_pipeline(classname)
         self.results['bytecode'] = bytecode_result
+        
+        # ===================================================================
+        # OPTIONAL: Dynamic Profiling (UNSOUND - hints only!)
+        # ===================================================================
+        if self.enable_dynamic_profiling and DYNAMIC_PROFILER_AVAILABLE:
+            log.info("\n[Dynamic Profiling] Executing with sample inputs (HINTS ONLY)")
+            log.info("  ⚠️  WARNING: Dynamic profiling is UNSOUND for dead code detection!")
+            profiling_result = self.run_dynamic_profiling(classname)
+            self.results['profiling'] = profiling_result
+            
+            # Log summary
+            if profiling_result:
+                avg_coverage = profiling_result._get_average_coverage()
+                log.info(f"  Profiled {len(profiling_result.method_profiles)} methods")
+                log.info(f"  Average coverage: {avg_coverage:.1f}%")
+                log.info(f"  Total executions: {profiling_result.total_executions}")
+        elif self.enable_dynamic_profiling and not DYNAMIC_PROFILER_AVAILABLE:
+            log.warning("\n[Dynamic Profiling] DISABLED - module not available")
         
         # ===================================================================
         # VERIFICATION: Check suspected unused imports with bytecode
@@ -507,6 +560,50 @@ class Debloater:
         
         return dead_by_method
     
+    def run_dynamic_profiling(self, classname: jvm.ClassName) -> Optional['ProfilingResult']:
+        """
+        Run dynamic profiling by executing methods with sample inputs.
+        
+        IMPORTANT: This is UNSOUND for dead code detection!
+        Just because code wasn't executed with sample inputs doesn't mean it's dead.
+        Results are only used for:
+        - Providing confidence hints
+        - Identifying hot/cold code paths
+        - Gathering value range information
+        
+        Args:
+            classname: Class to profile
+            
+        Returns:
+            ProfilingResult with coverage and value range data, or None on error
+        """
+        if not DYNAMIC_PROFILER_AVAILABLE:
+            log.warning("  Dynamic profiler not available")
+            return None
+        
+        try:
+            profiler = DynamicProfiler(
+                self.suite,
+                num_samples=self.profiling_samples,
+                max_steps=1000,
+                seed=42  # Reproducible results
+            )
+            
+            result = profiler.profile_class(classname)
+            
+            # Log hints (but don't treat as dead code!)
+            uncovered_hints = result.get_uncovered_code_hints()
+            if uncovered_hints:
+                log.info("  ⚠️  Profiling hints (NOT proof of dead code):")
+                for method, indices in list(uncovered_hints.items())[:5]:
+                    log.info(f"    {method}: {len(indices)} indices not executed")
+            
+            return result
+            
+        except Exception as e:
+            log.warning(f"  Dynamic profiling failed: {e}")
+            return None
+    
     def map_bytecode_to_source(self, classname: jvm.ClassName, 
                                bytecode_result: BytecodeResult) -> MappedBytecodeResult:
         """
@@ -829,6 +926,46 @@ class Debloater:
             if combined.total_dead_lines > 10:
                 print(f"  ... and {combined.total_dead_lines - 10} more lines")
         
+        # Dynamic Profiling results (hints only!)
+        profiling_result = self.results.get('profiling')
+        if profiling_result:
+            print(f"\n⚡ Dynamic Profiling (HINTS ONLY - not proof of dead code!):")
+            print(f"  ⚠️  WARNING: Dynamic profiling is unsound!")
+            print(f"  Methods profiled: {len(profiling_result.method_profiles)}")
+            print(f"  Total executions: {profiling_result.total_executions}")
+            print(f"  Average coverage: {profiling_result._get_average_coverage():.1f}%")
+            
+            # Show methods with low coverage as hints
+            low_coverage = []
+            for method_name, profile in profiling_result.method_profiles.items():
+                coverage = profile.coverage.get_coverage_percentage()
+                if coverage < 100:
+                    low_coverage.append((method_name, coverage, len(profile.coverage.get_uncovered_indices())))
+            
+            if low_coverage:
+                print(f"\n  Potential cold code (not executed during profiling):")
+                for method, coverage, uncovered in sorted(low_coverage, key=lambda x: x[1])[:5]:
+                    method_short = method.split(".")[-1]
+                    print(f"    ⚠️  {method_short}: {coverage:.0f}% coverage ({uncovered} indices not hit)")
+                if len(low_coverage) > 5:
+                    print(f"    ... and {len(low_coverage) - 5} more methods")
+            
+            # Show value range hints
+            range_hints = profiling_result.get_value_range_hints()
+            interesting_ranges = []
+            for method, ranges in range_hints.items():
+                for idx, (min_v, max_v) in ranges.items():
+                    if min_v is not None and min_v > 0:
+                        interesting_ranges.append((method, idx, "always positive", min_v, max_v))
+                    elif min_v is not None and min_v >= 0:
+                        interesting_ranges.append((method, idx, "never negative", min_v, max_v))
+            
+            if interesting_ranges:
+                print(f"\n  Value range hints:")
+                for method, idx, hint, min_v, max_v in interesting_ranges[:5]:
+                    method_short = method.split(".")[-1]
+                    print(f"    💡 {method_short} local_{idx}: {hint} [{min_v}, {max_v}]")
+        
         print("\n" + "="*70)
 
 
@@ -1017,6 +1154,10 @@ Examples:
                        help="Directory mode: analyze all Java files in directory")
     parser.add_argument("--quiet", "-q", action="store_true",
                        help="Quiet mode: only show summary for batch processing")
+    parser.add_argument("--profile", "-p", action="store_true",
+                       help="Enable dynamic profiling (UNSOUND - hints only, not for deletion)")
+    parser.add_argument("--profile-samples", type=int, default=20,
+                       help="Number of sample inputs per method for profiling (default: 20)")
     
     args = parser.parse_args()
     
@@ -1067,7 +1208,11 @@ Examples:
         parts = args.classname.split(".")
         classname = jvm.ClassName("/".join(parts))
         
-        debloater = Debloater(suite)
+        debloater = Debloater(
+            suite,
+            enable_dynamic_profiling=args.profile,
+            profiling_samples=args.profile_samples
+        )
         
         try:
             debloater.analyze_class(classname, source_file, verbose=True)
